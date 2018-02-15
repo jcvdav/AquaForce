@@ -70,19 +70,38 @@ lapply(FAO_ts, FUN = function(x){sort(unique(x))}) %>%
   listviewer::jsonedit()
 ```
 
-### Data availability by year
+### Total aquaculture and fisheries production
+
+```{r}
+FAO_ts %>% 
+  group_by(source, year, sci_name) %>% 
+  summarize(Quantity = sum(quantity, na.rm = T) / 1000000) %>% 
+  mutate(Unit = paste(source, sci_name)) %>% 
+  ggplot(aes(x = year, y = Quantity, fill = Unit, group = Unit)) +
+  geom_area(color = "black", size = 0.5) +
+  cowplot::theme_cowplot() +
+  theme(legend.position = c(0.1,0.7)) +
+  scale_fill_brewer(palette = "green3") +
+  labs(x = "Year", y = "Million tones", caption = "(Data from FAO: www.fao.org/fishery/statistics/)") +
+  scale_x_continuous(labels = seq(1955, 2015, by = 10), breaks = seq(1955, 2015, by = 10))
+```
+
+
+### Acuaculture and wildcaught fisheries by country
 
 You can explore landings and acuaculture production by country by playing with this widget. Click on the expand button in the bottom-left corner to view it in full.
 
 ```{r}
-FAO_ts %>%
-  group_by(source, country, year) %>% 
+FAO_ts %>% 
+  group_by(source, year) %>% 
   summarize(Quantity = sum(quantity, na.rm = T) / 1000000) %>% 
-  ggplot(aes(x = year, y = Quantity, fill = source, group = source)) +
+  ggplot(aes(x = year, y = Quantity, fill = source)) +
   geom_area(color = "black", size = 0.5) +
   cowplot::theme_cowplot() +
-  theme(legend.position = "none") +
-  trelliscopejs::facet_trelliscope(~country, nrow = 3, ncol = 3, width = 1000, height = 500, scales = "free", self_contained = T)
+  theme(legend.position = c(0.1,0.7)) +
+  scale_fill_brewer(palette = "green3") +
+  labs(x = "Year", y = "Million tones", caption = "(Data from FAO: www.fao.org/fishery/statistics/)") +
+  scale_x_continuous(labels = seq(1955, 2015, by = 10), breaks = seq(1955, 2015, by = 10))
 ```
 
 # Plots from last week
