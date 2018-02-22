@@ -27,7 +27,7 @@ load("Data/sau_data.rds")
 
 # Put data together
 
-We are using FAO's data for [acuaculture production](http://www.fao.org/fishery/statistics/global-aquaculture-production/en) and [wild fisheries](http://www.fao.org/fishery/statistics/global-capture-production/en).
+We are using FAO's data for [aquaculture production](http://www.fao.org/fishery/statistics/global-aquaculture-production/en) and [wild fisheries](http://www.fao.org/fishery/statistics/global-capture-production/en).
 
 ```{r, eval = F}
 # Load FAO species codes lookup table
@@ -38,11 +38,11 @@ FAO_sp_codes <- read.csv(file = "Data/FAO_sp_codes.csv", stringsAsFactors = F) %
 FAO_cty_codes <- read.csv(file = "Data/FAO_cty_codes.csv", stringsAsFactors = F) %>% 
   select(country = UN_CODE, iso = Name_en)
 
-# Load FAO acuaculture timeseries
+# Load FAO aquaculture timeseries
 FAO_ac_ts <- read.csv(file = "Data/FAO_ac_ts.csv", stringsAsFactors = F) %>% 
   left_join(FAO_sp_codes, by = c("Species" = "species")) %>% 
   left_join(FAO_cty_codes, by = c("Country" = "country")) %>% 
-  mutate(source = "Acuaculture") %>% 
+  mutate(source = "Aquaculture") %>% 
   select(Year, Country, iso, source, Species, common_name, sci_name, Quantity, Value)
 
 # Load FAO fisheries production timeseries
@@ -94,9 +94,9 @@ FAO_ts %>%
 ```
 
 
-### Acuaculture and wildcaught fisheries by country
+### Aquaculture and wildcaught fisheries by country
 
-You can explore landings and acuaculture production by country by playing with this widget. Click on the expand button in the bottom-left corner to view it in full.
+You can explore landings and aquaculture production by country by playing with this widget. Click on the expand button in the bottom-left corner to view it in full.
 
 ```{r}
 FAO_ts %>% 
@@ -268,19 +268,38 @@ fao_salmon_lobster  %>%
   select(country, year, type, source, general_name, common_name, quantity, value, ppt) %>%
   group_by(year, source, type, general_name) %>% 
   summarize(quantity = sum(quantity)) %>% 
-  filter(!(general_name == "Lobster" & type == "Acuaculture")) %>% 
+  filter(!(general_name == "Lobster" & type == "Aquaculture")) %>% 
   rename(Species = general_name,
          Type = type) %>% 
-  ggplot(aes(x = year, y = quantity/1000000, color = Type, linetype = Species, group = paste(Type, source, Species))) +
+  mutate(`Source-Type` = paste(source, Type, sep = "-")) %>% 
+  ggplot(aes(x = year, y = quantity/1000000, color = `Source-Type`, linetype = Species, group = paste(Type, source, Species))) +
   geom_line(size = 1) +
   scale_color_brewer(palette = "Set1") +
   geom_vline(xintercept = 1962, linetype = "dashed") +
-  geom_text(aes(x = 1975, y = 2.5, label = "Salmon acuaculture begins"), color = "black", size = 4) +
+  geom_text(aes(x = 1975, y = 2.5, label = "Salmon aquaculture begins"), color = "black", size = 4) +
   labs(x = "Year", y = "Quantities (million MT)", caption = "(Data from FAO: www.fao.org/fishery/statistics/)") +
   theme_minimal()
 ```
 
 ```{r}
+all_salmon_lobster %>% 
+  group_by(year, source, type, general_name) %>% 
+  summarize(quantity = sum(quantity)) %>% 
+  filter(!(general_name == "Lobster" & type == "Aquaculture")) %>% 
+  rename(Species = general_name,
+         Type = type) %>% 
+  mutate(`Source-Type` = paste(source, Type, sep = "-")) %>% 
+  ggplot(aes(x = year, y = quantity/1000000, color = `Source-Type`, linetype = Species, group = paste(Type, source, Species))) +
+  geom_line(size = 1) +
+  scale_color_brewer(palette = "Set1") +
+  geom_vline(xintercept = 1962, linetype = "dashed") +
+  geom_text(aes(x = 1975, y = 2.5, label = "Salmon aquaculture begins"), color = "black", size = 4) +
+  labs(x = "Year", y = "Quantities (million MT)", caption = "(Data from FAO: www.fao.org/fishery/statistics/)") +
+  theme_minimal()
+```
+
+
+```{r, eval = F}
 write.csv(all_salmon_lobster, file = "./Data/all_salmon_lobster.csv", row.names = F)
 ```
 
