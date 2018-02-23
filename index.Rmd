@@ -30,45 +30,61 @@ load("Data/sau_data.rds")
 We are using FAO's data for [aquaculture production](http://www.fao.org/fishery/statistics/global-aquaculture-production/en) and [wild fisheries](http://www.fao.org/fishery/statistics/global-capture-production/en).
 
 ```{r, eval = F}
+FAO_sp_groups <- read.csv(file = "Data/FAO_spp_groups.csv", stringsAsFactors = F) %>% 
+  janitor::clean_names() %>% 
+  select(species = x3alpha_code, family = family_group, order = order_group) %>% 
+  mutate(family = taxize::taxize_capwords(family, onlyfirst = T),
+         order = taxize::taxize_capwords(order, onlyfirst = T))
+
 # Load FAO species codes lookup table
 FAO_sp_codes <- read.csv(file = "Data/FAO_sp_codes.csv", stringsAsFactors = F) %>% 
-  select(species = X3Alpha_Code, common_name = Name_en, sci_name = Scientific_Name)
+  janitor::clean_names() %>% 
+  select(species = x3alpha_code, common_name = name_en, sci_name = scientific_name) %>% 
+  left_join(FAO_sp_groups) %>% 
+  select(order, family, sci_name, common_name, species)
 
 # Load FAO country codes lookup table
 FAO_cty_codes <- read.csv(file = "Data/FAO_cty_codes.csv", stringsAsFactors = F) %>% 
   select(country = UN_CODE, iso = Name_en)
 
 # Load FAO aquaculture timeseries
-FAO_ac_ts <- read.csv(file = "Data/FAO_ac_ts.csv", stringsAsFactors = F) %>% 
-  left_join(FAO_sp_codes, by = c("Species" = "species")) %>% 
-  left_join(FAO_cty_codes, by = c("Country" = "country")) %>% 
-  mutate(source = "Aquaculture") %>% 
-  select(Year, Country, iso, source, Species, common_name, sci_name, Quantity, Value)
+FAO_ac_ts <- read.csv(file = "Data/FAO_ac_ts.csv", stringsAsFactors = F) %>%
+  janitor::clean_names() %>% 
+  filter(quantity > 0) %>% 
+  left_join(FAO_sp_codes, by = "species") %>% 
+  left_join(FAO_cty_codes, by = "country") %>% 
+  janitor::clean_names() %>% 
+  mutate(country = countrycode::countrycode(sourcevar = iso,
+                                            origin = "iso3c",
+                                            destination = "country.name",
+                                            warn = F),
+         source = "Aquaculture") %>% 
+  group_by(year, production_area, country, iso, source, species, common_name, sci_name) %>% 
+  summarize(quantity = sum(quantity, na.rm = T), value = sum(value, na.rm = T)) %>% 
+  ungroup()
 
 # Load FAO fisheries production timeseries
 FAO_fi_ts <- read.csv(file = "Data/FAO_fi_ts.csv", stringsAsFactors = F) %>% 
-  left_join(FAO_sp_codes, by = c("Species" = "species")) %>% 
-  left_join(FAO_cty_codes, by = c("Country" = "country")) %>% 
-  mutate(source = "Catches",
-         Value = NA) %>% 
-  select(Year, Country, iso, source, Species, common_name, sci_name, Quantity, Value)
+  janitor::clean_names() %>% 
+  filter(!unit == "no", quantity > 0) %>% 
+  left_join(FAO_sp_codes, by = "species") %>% 
+  left_join(FAO_cty_codes, by = "country") %>% 
+  mutate(country = countrycode::countrycode(sourcevar = iso,
+                                            origin = "iso3c",
+                                            destination = "country.name",
+                                            warn = F),
+         source = "Catches",
+         value = NA) %>% 
+  select(year, production_area = fishing_area, country, iso, source, species, common_name, sci_name, quantity, value)
 
 # Join them together
 FAO_ts <- rbind(FAO_ac_ts, FAO_fi_ts) %>% 
-  select(year = Year,
-          country = iso,
-          source = source,
-          species = Species,
-          common_name,
-          sci_name,
-          quantity = Quantity,
-          value =  Value) %>% 
   arrange(year, country, source, species, common_name, sci_name, quantity, value)
 ```
 
-## Some data diagnostics
+# Some data diagnostics
 
-### Structure of the data
+## Structure of the data
 
 This listviewer widget lets us look at the "unique" values per column (each column in our dataset is a variable). For example, clicking on year will show all the years for which we have data. Note that this does not imply we have data for all countries on every year, but that there is at least one observation for any given year. The same is true for other variables.
 
@@ -77,14 +93,13 @@ lapply(FAO_ts, FUN = function(x){sort(unique(x))}) %>%
   listviewer::jsonedit()
 ```
 
-### Total aquaculture and fisheries production
+## Total seafood production in the world
 
-```{r, eval = F}
+```{r}
 FAO_ts %>% 
-  group_by(source, year, sci_name) %>% 
+  group_by(source, year) %>% 
   summarize(Quantity = sum(quantity, na.rm = T) / 1000000) %>% 
-  mutate(Unit = paste(source, sci_name)) %>% 
-  ggplot(aes(x = year, y = Quantity, fill = Unit, group = Unit)) +
+  ggplot(aes(x = year, y = Quantity, fill = source)) +
   geom_area(color = "black", size = 0.5) +
   cowplot::theme_cowplot() +
   theme(legend.position = c(0.1,0.7)) +
@@ -93,57 +108,30 @@ FAO_ts %>%
   scale_x_continuous(labels = seq(1955, 2015, by = 10), breaks = seq(1955, 2015, by = 10))
 ```
 
-
-### Aquaculture and wildcaught fisheries by country
+## Aquaculture and wildcaught fisheries by country
 
 You can explore landings and aquaculture production by country by playing with this widget. Click on the expand button in the bottom-left corner to view it in full.
 
-```{r}
+```{r, eval = F}
 FAO_ts %>% 
-  group_by(source, year) %>% 
+  group_by(source, country, year) %>% 
   summarize(Quantity = sum(quantity, na.rm = T) / 1000000) %>% 
-  ggplot(aes(x = year, y = Quantity, fill = source)) +
+  ggplot(aes(x = year, y = Quantity, fill = source, group = source)) +
   geom_area(color = "black", size = 0.5) +
   cowplot::theme_cowplot() +
   theme(legend.position = c(0.1,0.7)) +
   scale_fill_brewer(palette = "green3") +
-  labs(x = "Year", y = "Million tones", caption = "(Data from FAO: www.fao.org/fishery/statistics/)") +
-  scale_x_continuous(labels = seq(1955, 2015, by = 10), breaks = seq(1955, 2015, by = 10))
+  labs(x = "Year", y = "Million tones") +
+  trelliscopejs::facet_trelliscope(~country, nrow = 3, ncol = 3, width = 1000, height = 500, scales = "free", self_contained = T)
 ```
 
-# Plots from last week
+##  Write FAO data
 
-## Plotting by salmon species
+Looks good, export the data
 
-```{r}
-FAO_ts %>% 
-  filter(species %in% c("PIN", "CHI", "SOC", "COH", "SAL")) %>% 
-  group_by(source, year, sci_name) %>% 
-  summarize(Quantity = sum(quantity, na.rm = T) / 1000000) %>% 
-  mutate(Unit = paste(source, sci_name)) %>% 
-  ggplot(aes(x = year, y = Quantity, fill = Unit, group = Unit)) +
-  geom_area(color = "black", size = 0.5) +
-  cowplot::theme_cowplot() +
-  theme(legend.position = c(0.1,0.7)) +
-  scale_fill_brewer(palette = "green3") +
-  labs(x = "Year", y = "Million tones", caption = "(Data from FAO: www.fao.org/fishery/statistics/)") +
-  scale_x_continuous(labels = seq(1955, 2015, by = 10), breaks = seq(1955, 2015, by = 10))
-```
-
-## Plotting all salmon species
-
-```{r}
-FAO_ts %>% 
-  filter(species %in% c("PIN", "CHI", "SOC", "COH", "SAL")) %>% 
-  group_by(source, year) %>% 
-  summarize(Quantity = sum(quantity, na.rm = T) / 1000000) %>% 
-  ggplot(aes(x = year, y = Quantity, fill = source)) +
-  geom_area(color = "black", size = 0.5) +
-  cowplot::theme_cowplot() +
-  theme(legend.position = c(0.1,0.7)) +
-  scale_fill_brewer(palette = "green3") +
-  labs(x = "Year", y = "Million tones", caption = "(Data from FAO: www.fao.org/fishery/statistics/)") +
-  scale_x_continuous(labels = seq(1955, 2015, by = 10), breaks = seq(1955, 2015, by = 10))
+```{r, eval = F}
+write.csv(FAO_ts, "./Data/FAO_data.csv", row.names = F)
+save(FAO_ts, file = "./Data/FAO_data.rds")
 ```
 
 # SAU data
@@ -196,7 +184,7 @@ sau_data <- left_join(sau_catches, sau_landings, by = c("title", "years", "speci
   mutate(ppt = value / landings)
 ```
 
-# Plot SAU vs FAO
+## Plot SAU vs FAO
 
 ```{r}
 aggregate_sau <- sau_data %>% 
@@ -215,98 +203,134 @@ FAO_ts %>%
   geom_line(size = 1) +
   scale_color_brewer(palette = "Set1") +
   labs(x = "Year", y = "Quantities (million MT)") +
-  theme_minimal()
+  theme_minimal() +
+  scale_x_continuous(limits = c(1950, 2020))
+```
+
+```{r}
+FAO_ts %>% 
+  filter(source == "Catches") %>% 
+  group_by(year) %>% 
+  summarize(quantity = sum(quantity)) %>% 
+  mutate(source = "FAO") %>% 
+  rbind(aggregate_sau) %>% 
+  select(year, source, quantity) %>% 
+  spread(source, quantity) %>% 
+  mutate(difference = SAU - FAO) %>% 
+  na.omit() %>% 
+  ggplot(aes(x = year, y = difference/1e6, color = "1")) + 
+  geom_line(size = 1) +
+  scale_color_brewer(palette = "Set1") +
+  labs(x = "Year", y = "Quantities (million MT)") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_x_continuous(limits = c(1950, 2020)) +
+  scale_y_continuous(limits = c(0, 30))
+
+```
+
+## Export SAU
+
+```{r, eval = F}
+write.csv(sau_data, "./Data/SAU_data.csv", row.names = F)
+save(sau_data, file = "./Data/sau_data.rds")
+```
+
+
+# Looking into Salmon
+
+## Plotting by salmon species
+
+```{r}
+FAO_ts %>% 
+  filter(species %in% c("PIN", "CHI", "SOC", "COH", "SAL")) %>% 
+  group_by(source, year, sci_name) %>% 
+  summarize(Quantity = sum(quantity, na.rm = T) / 1000000) %>% 
+  mutate(Unit = paste(source, sci_name)) %>% 
+  ggplot(aes(x = year, y = Quantity, fill = Unit, group = Unit)) +
+  geom_area(color = "black", size = 0.5) +
+  cowplot::theme_cowplot() +
+  theme(legend.position = c(0.1,0.7)) +
+  scale_fill_brewer(palette = "green3") +
+  labs(x = "Year", y = "Million tones", caption = "(Data from FAO: www.fao.org/fishery/statistics/)") +
+  scale_x_continuous(labels = seq(1955, 2015, by = 10), breaks = seq(1955, 2015, by = 10))
+```
+
+## Plotting all salmon species
+
+```{r}
+FAO_ts %>% 
+  filter(species %in% c("PIN", "CHI", "SOC", "COH", "SAL")) %>% 
+  group_by(source, year) %>% 
+  summarize(Quantity = sum(quantity, na.rm = T) / 1000000) %>% 
+  ggplot(aes(x = year, y = Quantity, fill = source)) +
+  geom_area(color = "black", size = 0.5) +
+  cowplot::theme_cowplot() +
+  theme(legend.position = c(0.1,0.7)) +
+  scale_fill_brewer(palette = "green3") +
+  labs(x = "Year", y = "Million tones", caption = "(Data from FAO: www.fao.org/fishery/statistics/)") +
+  scale_x_continuous(labels = seq(1955, 2015, by = 10), breaks = seq(1955, 2015, by = 10))
 ```
 
 # Get salmon and lobster data
 
-## from FAO
-
 ```{r}
+## from FAO
 fao_salmon_lobster <- FAO_ts %>% 
   mutate(lobster = grepl(pattern = "lobster", x = common_name),
-         salmon = grepl(pattern = "salmon", x = common_name)) %>% 
-  filter(lobster | salmon) %>% 
-  arrange(country, year, source, species, common_name, sci_name) %>% 
-  select(country, year, type = source, species, common_name, sci_name, quantity) %>% 
-  mutate(source = "FAO") %>% 
-  filter(!country == "", quantity > 0) %>% 
-  mutate(value = NA,
-         ppt = NA,
-         country = countrycode(sourcevar = country, origin = "iso3c", destination = "country.name")) %>% 
-  select(country, year, type, source, common_name, quantity, value, ppt)
-```
-
-## From SAU
-
-```{r}
-sau_salmon_lobster <- sau_data %>% 
-  mutate(lobster = grepl(pattern = "lobster", x = species),
-         salmon = grepl(pattern = "salmon", x = species)) %>% 
-  filter(lobster | salmon) %>% 
-  mutate(type = "Catches",
-         source = "SAU") %>% 
-  select(country = title, year = years, type, source, common_name = species, quantity = landings, value, ppt)
-
-```
-
-# Merge them together
-
-```{r}
-all_salmon_lobster <- rbind(fao_salmon_lobster, sau_salmon_lobster) %>% 
-  mutate(lobster = grepl(pattern = "lobster", x = common_name),
+         salmon = grepl(pattern = "salmon", x = common_name),
          general_name = case_when(lobster ~ "Lobster",
                                   TRUE ~ "Salmon")) %>% 
-  select(country, year, type, source, general_name, common_name, quantity, value, ppt)
+  filter(lobster | salmon)
 ```
 
 ```{r}
 fao_salmon_lobster  %>%
-  mutate(lobster = grepl(pattern = "lobster", x = common_name),
-         general_name = case_when(lobster ~ "Lobster",
-                                  TRUE ~ "Salmon")) %>%
-  select(country, year, type, source, general_name, common_name, quantity, value, ppt) %>%
-  group_by(year, source, type, general_name) %>% 
+  group_by(year, source, general_name) %>% 
   summarize(quantity = sum(quantity)) %>% 
-  filter(!(general_name == "Lobster" & type == "Aquaculture")) %>% 
-  rename(Species = general_name,
-         Type = type) %>% 
-  mutate(`Source-Type` = paste(source, Type, sep = "-")) %>% 
-  ggplot(aes(x = year, y = quantity/1000000, color = `Source-Type`, linetype = Species, group = paste(Type, source, Species))) +
+  filter(!(general_name == "Lobster" & source == "Aquaculture")) %>% 
+  rename(Species = general_name) %>% 
+  ggplot(aes(x = year, y = quantity/1000000, color = source, linetype = Species, group = paste(source, Species))) +
   geom_line(size = 1) +
   scale_color_brewer(palette = "Set1") +
   geom_vline(xintercept = 1962, linetype = "dashed") +
   geom_text(aes(x = 1975, y = 2.5, label = "Salmon aquaculture begins"), color = "black", size = 4) +
   labs(x = "Year", y = "Quantities (million MT)", caption = "(Data from FAO: www.fao.org/fishery/statistics/)") +
   theme_minimal()
+```
+
+```{r, eval = F}
+write.csv(fao_salmon_lobster, file = "./Data/fao_salmon_lobster.csv", row.names = F)
 ```
 
 ```{r}
-all_salmon_lobster %>% 
-  group_by(year, source, type, general_name) %>% 
-  summarize(quantity = sum(quantity)) %>% 
-  filter(!(general_name == "Lobster" & type == "Aquaculture")) %>% 
-  rename(Species = general_name,
-         Type = type) %>% 
-  mutate(`Source-Type` = paste(source, Type, sep = "-")) %>% 
-  ggplot(aes(x = year, y = quantity/1000000, color = `Source-Type`, linetype = Species, group = paste(Type, source, Species))) +
-  geom_line(size = 1) +
-  scale_color_brewer(palette = "Set1") +
-  geom_vline(xintercept = 1962, linetype = "dashed") +
-  geom_text(aes(x = 1975, y = 2.5, label = "Salmon aquaculture begins"), color = "black", size = 4) +
-  labs(x = "Year", y = "Quantities (million MT)", caption = "(Data from FAO: www.fao.org/fishery/statistics/)") +
-  theme_minimal()
+
+fao_salmon_lobster_aqua <- filter(fao_salmon_lobster, source == "Aquaculture") %>% 
+  group_by(year) %>% 
+  summarize(Salmon = log(sum(quantity, na.rm = T))) %>% 
+  mutate(Lobster = 0) %>% 
+  gather(general_name, aquaculture, -year)
+
+fao_salmon_lobster_model <- filter(fao_salmon_lobster, source == "Catches") %>% 
+  left_join(fao_salmon_lobster_aqua, by = c("year", "general_name"))
+
+model1 <- lm(log(quantity) ~ aquaculture, fao_salmon_lobster_model)
+
+model2 <- lm(log(quantity) ~ factor(year) + aquaculture, fao_salmon_lobster_model)
+
+model3 <- lm(log(quantity) ~ factor(year) + aquaculture + species, fao_salmon_lobster_model)
+
+model4 <- lm(log(quantity) ~ factor(year) + aquaculture + species + iso, fao_salmon_lobster_model)
+
 ```
 
-
-```{r, eval = F}
-write.csv(all_salmon_lobster, file = "./Data/all_salmon_lobster.csv", row.names = F)
+```{r, results = "asis"}
+stargazer::stargazer(model1, model2, model3, model4,
+                     single.row = T,
+                     type = "html",
+                     omit = c("iso", "year", "species"),
+                     intercept.bottom = F)
 ```
 
-
-
-
-
-
-
+# Filter NEI from common names
 
