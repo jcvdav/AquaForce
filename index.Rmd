@@ -303,24 +303,47 @@ fao_salmon_lobster  %>%
 write.csv(fao_salmon_lobster, file = "./Data/fao_salmon_lobster.csv", row.names = F)
 ```
 
+Model 1:
+
+$$
+log(Q_{t,s}) = \alpha + \beta_1log(A_{t, s}) +\epsilon_{t,s}
+$$
+Model 2:
+
+$$
+log(Q_{t,s}) = \alpha + \beta_1log(A_{t, s}) + \sum_{t = 1}^T\gamma_tYear_t +\epsilon_{t,s}
+$$
+
+Model 3:
+
+$$
+log(Q_{t,s}) = \alpha + \beta_1log(A_{t, s}) + \sum_{t = 1}^T\gamma_tYear_t \sum_{s = 1}^S{\sigma_sSpp_s} +\epsilon_{t,s}
+$$
+
+Model 4:
+
+$$
+log(Q_{t,s,c}) = \alpha + \beta_1log(A_{t, s}) + \sum_{t = 1}^T\gamma_tYear_t \sum_{s = 1}^S{\sigma_sSpp_s} + \sum_{c = 1}^C \Omega_cCountry +\epsilon_{t,s,c}
+$$
+
 ```{r}
 
 fao_salmon_lobster_aqua <- filter(fao_salmon_lobster, source == "Aquaculture") %>% 
   group_by(year) %>% 
-  summarize(Salmon = log(sum(quantity, na.rm = T))) %>% 
+  summarize(Salmon = log10(sum(quantity, na.rm = T))) %>% 
   mutate(Lobster = 0) %>% 
   gather(general_name, aquaculture, -year)
 
 fao_salmon_lobster_model <- filter(fao_salmon_lobster, source == "Catches") %>% 
   left_join(fao_salmon_lobster_aqua, by = c("year", "general_name"))
 
-model1 <- lm(log(quantity) ~ aquaculture, fao_salmon_lobster_model)
+model1 <- lm(log10(quantity) ~ aquaculture, fao_salmon_lobster_model)
 
-model2 <- lm(log(quantity) ~ factor(year) + aquaculture, fao_salmon_lobster_model)
+model2 <- lm(log10(quantity) ~ factor(year) + aquaculture, fao_salmon_lobster_model)
 
-model3 <- lm(log(quantity) ~ factor(year) + aquaculture + species, fao_salmon_lobster_model)
+model3 <- lm(log10(quantity) ~ factor(year) + aquaculture + species, fao_salmon_lobster_model)
 
-model4 <- lm(log(quantity) ~ factor(year) + aquaculture + species + iso, fao_salmon_lobster_model)
+model4 <- lm(log10(quantity) ~ factor(year) + aquaculture + species + iso, fao_salmon_lobster_model)
 
 ```
 
