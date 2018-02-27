@@ -326,6 +326,12 @@ $$
 log(Q_{t,s,c}) = \alpha + \beta_1log(A_{t, s}) + \sum_{t = 1}^T\gamma_tYear_t \sum_{s = 1}^S{\sigma_sSpp_s} + \sum_{c = 1}^C \Omega_cCountry +\epsilon_{t,s,c}
 $$
 
+Model 5:
+
+$$
+log(Q_{t,s,c,p}) = \alpha + \beta_1log(A_{t, s}) + \sum_{t = 1}^T\gamma_tYear_t \sum_{s = 1}^S{\sigma_sSpp_s} + \sum_{c = 1}^C \Omega_cCountry + \sum_{p = 1}^P Prod_p +\epsilon_{t,s,c}
+$$
+
 ```{r}
 
 fao_salmon_lobster_aqua <- filter(fao_salmon_lobster, source == "Aquaculture") %>% 
@@ -345,13 +351,14 @@ model3 <- lm(log10(quantity) ~ factor(year) + aquaculture + species, fao_salmon_
 
 model4 <- lm(log10(quantity) ~ factor(year) + aquaculture + species + iso, fao_salmon_lobster_model)
 
+model5 <- lm(log10(quantity) ~ factor(year) + aquaculture + species + iso + production_area, fao_salmon_lobster_model)
+
 ```
 
 ```{r, results = "asis"}
-stargazer::stargazer(model1, model2, model3, model4,
+stargazer::stargazer(model1, model2, model3, model4, model5,
                      single.row = T,
                      type = "html",
-                     omit = c("iso", "year", "species"),
                      intercept.bottom = F)
 ```
 
