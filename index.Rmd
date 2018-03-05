@@ -359,8 +359,127 @@ model5 <- lm(log10(quantity) ~ factor(year) + aquaculture + species + iso + prod
 stargazer::stargazer(model1, model2, model3, model4, model5,
                      single.row = T,
                      type = "html",
-                     intercept.bottom = F)
+                     intercept.bottom = F, omit = c("year", "iso", "species"))
 ```
 
-# Filter NEI from common names
+# Load RAM Legacy database
+
+```{r}
+ram <- read.csv("Data/RAM.csv", stringsAsFactors = F) %>% 
+  janitor::clean_names()
+```
+
+```{r}
+lobster_salmon_ram <- ram %>% 
+  mutate(lobster = grepl(pattern = "lobster", x = stocklong),
+         salmon = grepl(pattern = "salmon", x = stocklong),
+         general_name = case_when(lobster ~ "Lobster",
+                                  TRUE ~ "Salmon")) %>% 
+  filter(lobster | salmon,
+         tsid == "BdivBmsytouse-dimensionless")
+```
+
+```{r}
+lobster_salmon_ram %>% 
+  group_by(tsyear, general_name) %>% 
+  summarize(tsvalue = median(tsvalue, na.rm = T)) %>% 
+  ggplot(aes(x = tsyear, y = tsvalue, color = general_name, group = general_name)) +
+  geom_line(size = 1) +
+  theme_bw()
+```
+
+# Get the list of species ranked highest
+
+```{r}
+
+FAO_fi_ts <- FAO_ts %>% 
+  filter(source == "Catches")
+
+FAO_ac_ts <- FAO_ts %>% 
+  filter(!source == "Catches")
+
+cut <- 0.85
+
+## Wildcaught fisheries, top 95th percentile, quantities
+f95q <- FAO_fi_ts %>% 
+   filter(year == 2014,
+          !common_name %in% c("Marine fishes nei", "Freshwater fishes nei")) %>% 
+   mutate(common_name = tolower(gsub(pattern = " nei", replacement = "", x = common_name)),
+          common_name = gsub("\\s*\\([^\\)]+\\)", "", common_name)) %>% 
+   group_by(common_name, sci_name) %>% 
+   summarize(quantity = sum(quantity)) %>% 
+   ungroup() %>% 
+   filter(quantity >= quantile(quantity, cut)) %>% 
+   arrange(desc(quantity)) %>% 
+   mutate(rank_fq = row_number(desc(quantity)))
+
+## Wildcaught fisheries, top 95th percentile, values
+f95v <- sau_data %>% 
+   filter(years == 2014, !species == "others") %>% 
+   mutate(species = gsub(pattern = "_", replacement = " ", x = species)) %>% 
+   group_by(species) %>% 
+   summarize(value = sum(value)) %>% 
+   ungroup() %>% 
+   filter(value >= quantile(value, cut)) %>% 
+   arrange(desc(value)) %>% 
+   mutate(rank_fv = row_number(desc(value)))
+
+## Aquaculture, top 95th percentile, quantities
+a95q <- FAO_ac_ts %>% 
+   filter(year == 2014,
+          !common_name %in% c("Marine fishes nei", "Freshwater fishes nei")) %>% 
+   mutate(common_name = tolower(gsub(pattern = " nei", replacement = "", x = common_name)),
+          common_name = gsub("\\s*\\([^\\)]+\\)", "", common_name)) %>% 
+   group_by(common_name, sci_name) %>% 
+   summarize(quantity = sum(quantity)) %>%
+   ungroup() %>% 
+   filter(quantity >= quantile(quantity, cut)) %>% 
+   arrange(desc(quantity)) %>% 
+   mutate(rank_aq = row_number(desc(quantity)))
+
+## Aquaculture, top 95th percentile, values
+a95v <- FAO_ac_ts %>% 
+   filter(year == 2014,
+          !common_name %in% c("Marine fishes nei", "Freshwater fishes nei")) %>% 
+   mutate(common_name = tolower(gsub(pattern = " nei", replacement = "", x = common_name)),
+          common_name = gsub("\\s*\\([^\\)]+\\)", "", common_name)) %>% 
+   group_by(common_name, sci_name) %>% 
+   summarize(value = sum(value)) %>% 
+   ungroup() %>% 
+   filter(value >= quantile(value, cut)) %>% 
+   arrange(desc(value)) %>% 
+   mutate(rank_av = row_number(desc(value)))
+```
+
+
+
+## Joining them all
+
+### Key
+
+I had to cut them at 80th percentila to actually get some data on both groups
+
+- fq = fisheries quantities
+- fv = fisheries value
+- aq = aquaculture quantities
+- av = aquaculture value
+- Discard means that there is only aquaculture for them, but no fisheries (at least not in relevant quantities with this cuttof at 0.8)
+
+```{r}
+full_join(f95q, f95v, by = c("common_name" = "species")) %>% 
+  select(-c(quantity, value)) %>% 
+  full_join(a95q, by = c("common_name", "sci_name")) %>% 
+  full_join(a95v,  by = c("common_name", "sci_name")) %>% 
+  select(-c(quantity, value)) %>% 
+  replace_na(replace = list(rank_fq = 0, rank_fv = 0, rank_aq = 0, rank_av = 0)) %>% 
+  mutate(fish = ifelse(rank_fq + rank_fv > 0, 1, 0),
+         aqua = ifelse(rank_aq + rank_av > 0, 1, 0),
+         group = case_when(aqua + fish == 2 ~ "Treatment",
+                           aqua + fish == 1 & aqua == 1 ~ "Discard",
+                           aqua + fish == 1 & fish == 1 ~ "Control")) %>% 
+  select(-c(fish, aqua)) %>% 
+  select(group, everything()) %>% 
+  DT::datatable(options = list(pageLength = 50))
+```
+
 
