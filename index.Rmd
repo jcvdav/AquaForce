@@ -30,18 +30,18 @@ load("Data/sau_data.rds")
 We are using FAO's data for [aquaculture production](http://www.fao.org/fishery/statistics/global-aquaculture-production/en) and [wild fisheries](http://www.fao.org/fishery/statistics/global-capture-production/en).
 
 ```{r, eval = F}
-FAO_sp_groups <- read.csv(file = "Data/FAO_spp_groups.csv", stringsAsFactors = F) %>% 
+FAO_sp_groups <- read.csv(file = "Data/FAO_spp_groups.csv", stringsAsFactors = FALSE) %>% 
   janitor::clean_names() %>% 
   select(species = x3alpha_code, family = family_group, order = order_group) %>% 
   mutate(family = taxize::taxize_capwords(family, onlyfirst = T),
          order = taxize::taxize_capwords(order, onlyfirst = T))
 
 # Load FAO species codes lookup table
-FAO_sp_codes <- read.csv(file = "Data/FAO_sp_codes.csv", stringsAsFactors = F) %>% 
+FAO_sp_codes <- read.csv(file = "Data/FAO_sp_codes.csv", stringsAsFactors = FALSE) %>% 
   janitor::clean_names() %>% 
   select(species = x3alpha_code, common_name = name_en, sci_name = scientific_name) %>% 
   left_join(FAO_sp_groups) %>% 
-  select(order, family, sci_name, common_name, species)
+  select(order, family, sci_name, common_name, species, family, order)
 
 # Load FAO country codes lookup table
 FAO_cty_codes <- read.csv(file = "Data/FAO_cty_codes.csv", stringsAsFactors = F) %>% 
@@ -59,7 +59,7 @@ FAO_ac_ts <- read.csv(file = "Data/FAO_ac_ts.csv", stringsAsFactors = F) %>%
                                             destination = "country.name",
                                             warn = F),
          source = "Aquaculture") %>% 
-  group_by(year, production_area, country, iso, source, species, common_name, sci_name) %>% 
+  group_by(year, production_area, country, iso, source, species, common_name, sci_name, family, order) %>% 
   summarize(quantity = sum(quantity, na.rm = T), value = sum(value, na.rm = T)) %>% 
   ungroup()
 
@@ -75,11 +75,11 @@ FAO_fi_ts <- read.csv(file = "Data/FAO_fi_ts.csv", stringsAsFactors = F) %>%
                                             warn = F),
          source = "Catches",
          value = NA) %>% 
-  select(year, production_area = fishing_area, country, iso, source, species, common_name, sci_name, quantity, value)
+  select(year, production_area = fishing_area, country, iso, source, species, common_name, sci_name, family, order, quantity, value)
 
 # Join them together
 FAO_ts <- rbind(FAO_ac_ts, FAO_fi_ts) %>% 
-  arrange(year, country, source, species, common_name, sci_name, quantity, value)
+  arrange(year, country, source, species, common_name, sci_name, family, order, quantity, value)
 ```
 
 # Some data diagnostics
@@ -281,7 +281,9 @@ fao_salmon_lobster <- FAO_ts %>%
          salmon = grepl(pattern = "salmon", x = common_name),
          general_name = case_when(lobster ~ "Lobster",
                                   TRUE ~ "Salmon")) %>% 
-  filter(lobster | salmon)
+  filter(lobster | salmon) %>% 
+  mutate(common_name = tolower(gsub(pattern = " nei", replacement = "", x = common_name)),
+          common_name = gsub("\\s*\\([^\\)]+\\)", "", common_name))
 ```
 
 ```{r}
@@ -335,28 +337,40 @@ $$
 ```{r}
 
 fao_salmon_lobster_aqua <- filter(fao_salmon_lobster, source == "Aquaculture") %>% 
-  group_by(year) %>% 
-  summarize(Salmon = log10(sum(quantity, na.rm = T))) %>% 
-  mutate(Lobster = 0) %>% 
-  gather(general_name, aquaculture, -year)
+  group_by(year, species, common_name, sci_name) %>% 
+  summarize(aquaculture = sum(quantity, na.rm = T))
 
 fao_salmon_lobster_model <- filter(fao_salmon_lobster, source == "Catches") %>% 
-  left_join(fao_salmon_lobster_aqua, by = c("year", "general_name"))
+  select(year, production_area,
+         country,
+         iso,
+         general_name,
+         species,
+         common_name,
+         sci_name,
+         quantity) %>% 
+  left_join(fao_salmon_lobster_aqua, by = c("year", "sci_name", "species", "common_name")) %>% 
+  mutate(log10_aqua = ifelse(is.na(log10(aquaculture)), 0, log10(aquaculture)),
+         post = ifelse(log10_aqua > 0, 1, 0),
+         post = ifelse(year > 1962 & general_name == "Lobster", 1, post)) %>% 
+  replace_na(list(aquaculture = 0))
 
-model1 <- lm(log10(quantity) ~ aquaculture, fao_salmon_lobster_model)
+model1 <- lm(log10(quantity) ~ log10_aqua, fao_salmon_lobster_model)
 
-model2 <- lm(log10(quantity) ~ factor(year) + aquaculture, fao_salmon_lobster_model)
+model2 <- lm(log10(quantity) ~ factor(year) + log10_aqua, fao_salmon_lobster_model)
 
-model3 <- lm(log10(quantity) ~ factor(year) + aquaculture + species, fao_salmon_lobster_model)
+model3 <- lm(log10(quantity) ~ factor(year) + log10_aqua + species, fao_salmon_lobster_model)
 
-model4 <- lm(log10(quantity) ~ factor(year) + aquaculture + species + iso, fao_salmon_lobster_model)
+model4 <- lm(log10(quantity) ~ factor(year) + log10_aqua + species + iso, fao_salmon_lobster_model)
 
-model5 <- lm(log10(quantity) ~ factor(year) + aquaculture + species + iso + production_area, fao_salmon_lobster_model)
+model5 <- lm(log10(quantity) ~ factor(year) + log10_aqua + species + iso + production_area, fao_salmon_lobster_model)
+
+model6 <- lm(log10(quantity) ~ post*general_name, data = fao_salmon_lobster_model)
 
 ```
 
 ```{r, results = "asis"}
-stargazer::stargazer(model1, model2, model3, model4, model5,
+stargazer::stargazer(model1, model2, model3, model4, model5, model6,
                      single.row = T,
                      type = "html",
                      intercept.bottom = F, omit = c("year", "iso", "species"))
@@ -481,5 +495,81 @@ full_join(f95q, f95v, by = c("common_name" = "species")) %>%
   select(group, everything()) %>% 
   DT::datatable(options = list(pageLength = 50))
 ```
+
+## New take at treated vs control
+
+```{r}
+A <- FAO_ts %>%
+  filter(source == "Aquaculture") %>%
+  group_by(source, family) %>%
+  tally() %$%
+  family
+
+Fi <- FAO_ts %>%
+  filter(!source == "Aquaculture") %>%
+  group_by(source, family) %>%
+  tally() %$%
+  family
+
+treated <- intersect(A, Fi)
+control <- Fi[!Fi %in% intersect(A, Fi)]
+
+cut <- 0.90
+
+select_treated <- filter(FAO_ts, family %in% treated) %>%
+  filter(!family == "") %>% 
+  group_by(family) %>%
+  summarize(total = sum(quantity, na.rm = T)) %>%
+  arrange(desc(total)) %>% 
+  filter(total >= quantile(total, cut)) %>% 
+  mutate(group = "treated") %>% 
+   mutate(rank = row_number(desc(total)))
+
+select_control <- filter(FAO_ts, family %in% control) %>%
+  filter(!family == "") %>% 
+  group_by(family) %>%
+  summarize(total = sum(quantity, na.rm = T)) %>%
+  arrange(desc(total)) %>% 
+  filter(total >= quantile(total, cut)) %>% 
+  mutate(group = "control") %>% 
+   mutate(rank = row_number(desc(total)))
+
+rbind(select_treated, select_control) %>% 
+  select(group, family, total, rank) %>% 
+  View()
+
+# number of species in control families
+
+FAO_sp_codes %>% filter(family %in% select_control$family) %>% group_by(family, species) %>% tally() %>% select(-n) %>% group_by(family) %>% tally() %$% sum(n)
+
+# number of species in treated families
+
+FAO_sp_codes %>% filter(family %in% select_treated$family) %>% group_by(family, species) %>% tally() %>% select(-n) %>% group_by(family) %>% tally() %$% sum(n)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
