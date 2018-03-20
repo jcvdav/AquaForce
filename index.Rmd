@@ -17,6 +17,7 @@ suppressPackageStartupMessages({
   library(countrycode)
   library(seaaroundus)
   library(tidyverse)
+  library(magrittr)
 })
 ```
 
@@ -29,7 +30,7 @@ load("Data/sau_data.rds")
 
 We are using FAO's data for [aquaculture production](http://www.fao.org/fishery/statistics/global-aquaculture-production/en) and [wild fisheries](http://www.fao.org/fishery/statistics/global-capture-production/en).
 
-```{r, eval = F}
+```{r}
 FAO_sp_groups <- read.csv(file = "Data/FAO_spp_groups.csv", stringsAsFactors = FALSE) %>% 
   janitor::clean_names() %>% 
   select(species = x3alpha_code, family = family_group, order = order_group) %>% 
@@ -534,39 +535,269 @@ select_control <- filter(FAO_ts, family %in% control) %>%
   mutate(group = "control") %>% 
    mutate(rank = row_number(desc(total)))
 
-rbind(select_treated, select_control) %>% 
-  select(group, family, total, rank) %>% 
-  View()
 
 # number of species in control families
 
-FAO_sp_codes %>% filter(family %in% select_control$family) %>% group_by(family, species) %>% tally() %>% select(-n) %>% group_by(family) %>% tally() %$% sum(n)
+FAO_sp_codes %>%
+  filter(family %in% select_control$family) %>%
+  group_by(family, species) %>%
+  tally() %>%
+  select(-n) %>%
+  group_by(family) %>%
+  tally() %$%
+  sum(n)
 
 # number of species in treated families
 
-FAO_sp_codes %>% filter(family %in% select_treated$family) %>% group_by(family, species) %>% tally() %>% select(-n) %>% group_by(family) %>% tally() %$% sum(n)
+FAO_sp_codes %>%
+  filter(family %in% select_treated$family) %>%
+  group_by(family, species) %>%
+  tally() %>%
+  select(-n) %>%
+  group_by(family) %>%
+  tally() %$%
+  sum(n)
+
+# Historical production
+h_prod <- FAO_ts %>% 
+  filter(family %in% select_treated$family,
+         !source == "Aquaculture",
+         !sci_name %in% c("Salmo trutta", "Salmo spp", "Oncorhynchus mykiss")) %>%
+  group_by(family) %>% 
+  summarize(quantity_5p = mean(quantity)*0.1)
+
+FAO_ts %>%
+  filter(family %in% select_treated$family,
+         source == "Aquaculture",
+         !sci_name %in% c("Salmo trutta", "Salmo spp", "Oncorhynchus mykiss")) %>%
+  group_by(family, year) %>% 
+  summarize(quantity = sum(quantity)) %>% 
+  ungroup() %>% 
+  left_join(h_prod, by = "family") %>% 
+  mutate(post = ifelse(quantity <= quantity_5p, 0, 1)) %>% 
+  filter(post > 0) %>% 
+  group_by(family) %>% 
+  summarize(year_start = min(year)) %>% 
+  arrange(year_start) %>% 
+  filter(year_start > 1955) -> aq_treated_families
 
 ```
 
 
+year, country, family, species quantity, aquaculture, post, group
+
+```{r}
+control_group <- FAO_ts %>% 
+  filter(family %in% select_control$family,
+         !family == "Engraulidae") %>%
+  group_by(year, iso, family, species, sci_name) %>% 
+  summarize(quantity = sum(quantity)) %>% 
+  ungroup() %>% 
+  mutate(group = 0,
+         year_start = 1989,
+         post = ifelse(year <= year_start, 0, 1),
+         aquaculture = 0) %>% 
+  select(year, country = iso, family, species, sci_name, quantity, aquaculture, post, group, year_start)
+```
+
+
+```{r}
+treatment_group_ac <- FAO_ts %>% 
+  filter(family %in% aq_treated_families$family,
+         source == "Aquaculture",
+         !sci_name %in% c("Salmo trutta", "Salmo spp", "Oncorhynchus mykiss")) %>% 
+  group_by(year, family) %>% 
+  summarize(aquaculture = sum(quantity)) %>% 
+  ungroup()
+
+treatment_group <- FAO_ts %>% 
+  filter(family %in% aq_treated_families$family,
+         source == "Aquaculture",
+         !sci_name %in% c("Salmo trutta", "Salmo spp", "Oncorhynchus mykiss")) %>%
+  group_by(year, iso, family, species, sci_name) %>% 
+  summarize(quantity = sum(quantity)) %>% 
+  ungroup() %>% 
+  left_join(aq_treated_families, by = "family") %>% 
+  mutate(group = 1,
+         post = ifelse(year <= year_start, 0, 1)) %>% 
+  left_join(treatment_group_ac, by = c("year", "family")) %>% 
+  select(year, country = iso, family, species, sci_name, quantity, aquaculture, post, group, year_start)
+```
+
+
+```{r}
+data_for_model <- rbind(control_group, treatment_group) %>% 
+  filter(!country == "")
+```
+
+
+The diff-in-diff model you presented in class looked something like:
+
+$$y_{it} = \beta_1 * Salmon_i * Post_t + \beta_2*Salmon_i + \beta_3*Post_t + e_{it}$$
+
+where Salmon_i is a dummy equal to one if i refers to a salmon and Post_t is a dummy equal to one if t is after the introduction of salmon aquaculture. This estimator basically fits a constant effect for all post aquaculture years.
+
+$$ln(quantity_{it}) = \beta_1 G_i\times Post_t + \beta_2G_i + \beta_3Post_t + \sum_{f = 1}^{30}\gamma_fF_f + ln(aquacultur+1) + \sum_{t = 1}^T\Omega_tt+ \epsilon_{it}$$
+
+```{r}
+make_robust <- function(model){
+  model %>% 
+    lmtest::coeftest(sandwich::vcovHC(., type = "HC2"), cluster = "family") %>% 
+    broom::tidy() -> new_test
+  
+  robust_se <- new_test$std.error
+  names(robust_se) <- new_test$term
+  
+  return(robust_se)
+}
+```
+
+
+```{r}
+lm(log(quantity) ~ group*post + as.factor(year) + family + log(aquaculture + 1) -1, data_for_model) %>% 
+  stargazer::stargazer(se = list(make_robust(.)), t.auto = T, p.auto = T, single.row = T, omit = c("family", "year"), out = "table.html")
+```
 
 
 
+As an alternative, you can do what's called an "event study" plot where you now have:  
+
+$$y_{it} = \sum_{\frac{-12<s<30}{s \neq 0}} \beta_s * Salmon_i * event_s + \beta_2*Salmon_i + \beta_3*Post_t + e_{it}$$
+
+$$ln(Q) = \sum_{\frac{-12<s<30}{s \neq 0}} \beta_s G_i\times event_s + \beta_2G_i + \beta_3Post_t + \sum_{f = 1}^{30}\gamma_fF_f + ln(aquacultur+1) + \sum_{t = 1}^T\Omega_tt+ \epsilon_{it}$$
+
+where now $event_s$ are dummies that equal one for each year before and after the introduction of aquaculture. The year of the introduction will be the omitted variable. You effective estimate a time varying effect before and after aquaculture's introduction. The idea here is to allow the data to tell you what that response is over time. The coefficients prior to the treatment will serve as tests for differential pre-trends between lobster and salmon prior to the salmon aquaculture introduction. I want you guys to plot the $\beta_s$ coefficients and its associated standard errors. 
+
+```{r}
+
+T0 <- tibble(term = "group:T0", estimate = 0, std.error = 0, statistic = 0, p.value = NA, year = 0)
+
+data_for_model %>% 
+  mutate(year = year - year_start,
+         Tm12 = (year == -12)*1,
+         Tm11 = (year == -12)*1,
+         Tm10 = (year == -10)*1,
+         Tm9 = (year == -9)*1,
+         Tm8 = (year == -8)*1,
+         Tm7 = (year == -7)*1,
+         Tm6 = (year == -6)*1,
+         Tm5 = (year == -5)*1,
+         Tm4 = (year == -4)*1,
+         Tm3 = (year == -3)*1,
+         Tm2 = (year == -2)*1,
+         Tm1 = (year == -1)*1,
+         T0 = (year == 0)*1,
+         T1 = (year == 1)*1,
+         T2 = (year == 2)*1,
+         T3 = (year == 3)*1,
+         T4 = (year == 4)*1,
+         T5 = (year == 5)*1,
+         T6 = (year == 6)*1,
+         T7 = (year == 7)*1,
+         T8 = (year == 8)*1,
+         T9 = (year == 9)*1,
+         T10 = (year == 10)*1,
+         T11 = (year == 11)*1,
+         T12 = (year == 12)*1,
+         T13 = (year == 13)*1,
+         T14 = (year == 14)*1,
+         T15 = (year == 15)*1,
+         T16 = (year == 16)*1,
+         T17 = (year == 17)*1,
+         T18 = (year == 18)*1,
+         T19 = (year == 19)*1,
+         T20 = (year == 20)*1,
+         T21 = (year == 21)*1,
+         T22 = (year == 22)*1,
+         T23 = (year == 23)*1,
+         T24 = (year == 24)*1,
+         T25 = (year == 25)*1,
+         T26 = (year == 26)*1,
+         T27 = (year == 27)*1,
+         T28 = (year == 28)*1,
+         T29 = (year == 29)*1,
+         T30 = (year == 30)*1) %>% 
+  filter(dplyr::between(year, -12, 30)) %>% 
+  lm(formula = log(quantity) ~ group*(Tm12 + Tm11 + Tm10 + Tm9 + Tm8 + Tm7 + Tm6 + Tm5 + Tm4 + Tm3 + Tm2 + Tm1 +T1 + T2 + T3 + T4 + T5 + T6 + T7 + T8 + T9 + T10 + T11 + T12 + T13 + T14 + T15 + T16 + T17 + T18 + T10 + T20 + T21 + T22 + T24 + T25 + T26 +T27 + T28 + T29 + T30) + group +  post +log(aquaculture + 1) + family + as.factor(year) -1, data = .) %>%
+  lmtest::coeftest(plm::vcovHC(., type = "HC2", cluster = "family")) %>% 
+  broom::tidy() %>% 
+  filter(grepl(pattern = "(group:T)", x = term)) %>%
+  mutate(year = substring(term, 8,10),
+         year = gsub(pattern = "m", replacement = "-", year),
+         year = as.numeric(year)) %>% 
+  rbind(T0) %>% 
+  ggplot(aes(x = year, y = estimate)) +
+  geom_ribbon(aes(ymin = estimate - std.error, ymax = estimate + std.error), fill = "gray", alpha = 0.5) +
+  geom_line(color = "red", size = 1) +
+  cowplot::theme_cowplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "years since aquaculture", y = bquote(beta[s]))
+```
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+```{r}
+fao_salmon_lobster_model %>% 
+  mutate(salmon = 1*(general_name == "Salmon"),
+         year = year - 1964,
+         Tm12 = (year == -12)*1,
+         Tm11 = (year == -12)*1,
+         Tm10 = (year == -10)*1,
+         Tm9 = (year == -9)*1,
+         Tm8 = (year == -8)*1,
+         Tm7 = (year == -7)*1,
+         Tm6 = (year == -6)*1,
+         Tm5 = (year == -5)*1,
+         Tm4 = (year == -4)*1,
+         Tm3 = (year == -3)*1,
+         Tm2 = (year == -2)*1,
+         Tm1 = (year == -1)*1,
+         T0 = (year == 0)*1,
+         T1 = (year == 1)*1,
+         T2 = (year == 2)*1,
+         T3 = (year == 3)*1,
+         T4 = (year == 4)*1,
+         T5 = (year == 5)*1,
+         T6 = (year == 6)*1,
+         T7 = (year == 7)*1,
+         T8 = (year == 8)*1,
+         T9 = (year == 9)*1,
+         T10 = (year == 10)*1,
+         T11 = (year == 11)*1,
+         T12 = (year == 12)*1,
+         T13 = (year == 13)*1,
+         T14 = (year == 14)*1,
+         T15 = (year == 15)*1,
+         T16 = (year == 16)*1,
+         T17 = (year == 17)*1,
+         T18 = (year == 18)*1,
+         T19 = (year == 19)*1,
+         T20 = (year == 20)*1,
+         T21 = (year == 21)*1,
+         T22 = (year == 22)*1,
+         T23 = (year == 23)*1,
+         T24 = (year == 24)*1,
+         T25 = (year == 25)*1,
+         T26 = (year == 26)*1,
+         T27 = (year == 27)*1,
+         T28 = (year == 28)*1,
+         T29 = (year == 29)*1,
+         T30 = (year == 30)*1) %>% 
+  filter(dplyr::between(year, -12, 30)) %>% 
+  lm(formula = log(quantity) ~ salmon*(Tm12 + Tm11 + Tm10 + Tm9 + Tm8 + Tm7 + Tm6 + Tm5 + Tm4 + Tm3 + Tm2 + Tm1 +T1 + T2 + T3 + T4 + T5 + T6 + T7 + T8 + T9 + T10 + T11 + T12 + T13 + T14 + T15 + T16 + T17 + T18 + T10 + T20 + T21 + T22 + T24 + T25 + T26 +T27 + T28 + T29 + T30) + post +sci_name -1, data = .) %>%
+  lmtest::coeftest(plm::vcovHC(., type = "HC2", cluster = "sci_name")) %>% 
+  broom::tidy() %>% 
+  filter(grepl(pattern = "(salmon:T)", x = term)) %>%
+  mutate(year = substring(term, 9,10),
+         year = gsub(pattern = "m", replacement = "-", year),
+         year = as.numeric(year)) %>% 
+  rbind(T0) %>% 
+  ggplot(aes(x = year, y = estimate)) +
+  geom_ribbon(aes(ymin = estimate - std.error, ymax = estimate + std.error), fill = "gray", alpha = 0.5) +
+  geom_line(color = "red", size = 1) +
+  cowplot::theme_cowplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "years since aquaculture", y = bquote(beta[s]))
+```
 
 
 
