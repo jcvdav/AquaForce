@@ -167,7 +167,8 @@ From the above, we see that the mean year when treatment began is `r mean(aq_tre
 pre_post <- round(mean(aq_treated_genus$year_start)) #Define a better way of year-start
 
 control_group <- FAO_ts %>% 
-  filter(genus %in% select_control$genus) %>%
+  filter(genus %in% select_control$genus,
+         source == "Catches") %>%
   group_by(year, iso, genus, species, sci_name) %>% 
   summarize(quantity = sum(quantity),
             min_year = min(year)) %>% 
@@ -188,7 +189,7 @@ treatment_group_ac <- FAO_ts %>%
 
 treatment_group <- FAO_ts %>% 
   filter(genus %in% aq_treated_genus$genus,
-         source == "Aquaculture") %>%
+         source == "Catches") %>%
   group_by(year, iso, genus, species, sci_name) %>% 
   summarize(quantity = sum(quantity)) %>% 
   ungroup() %>% 
@@ -216,6 +217,20 @@ write.csv(x = data_for_model,
 
 # Analyses
 
+## Visualize the data
+
+```{r}
+data_for_model %>% 
+  # filter(group == 0) %>% 
+  mutate(years_since = year - year_start,
+         group = as.factor(group)) %>% 
+  group_by(years_since, group, genus) %>% 
+  summarize(total = sum(quantity, na.rm = T)) %>%
+  ungroup() %>% 
+  ggplot(aes(x = years_since, y = total, color = group, group = genus)) +
+  geom_line()
+```
+
 ## Comments by Kyle:
 
 The diff-in-diff model you presented in class looked something like:
@@ -235,23 +250,12 @@ lm(log(quantity) ~ group*post + genus + country -1, data_for_model) %>%
                        p.auto = T,
                        single.row = T,
                        omit = c("genus", "year", "country"),
-                       out = "table.html")
+                       header = F,
+                       type = "html")
 ```
+
 
 ```{r}
-data_for_model %>% 
-  filter(group == 0) %>% 
-  mutate(years_since = year - year_start,
-         group = as.factor(group)) %>% 
-  group_by(years_since, group) %>% 
-  summarize(total = sum(quantity, na.rm = T)) %>%
-  ungroup() %>% 
-  ggplot(aes(x = years_since, y = total, color = group, group = group)) +
-  geom_line()
-```
-
-
-```{r, eval = F}
 data_for_model %>%
   mutate(years_since = as.factor(as.integer(year - year_start)),
                           group = as.factor(group)) %>%
@@ -264,8 +268,9 @@ data_for_model %>%
                           replacement = "",
                           x = term))) %>%
   ggplot(aes(x = term, y = estimate)) +
-  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error)) +
-  geom_point()
+  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error), width = 0, size = 1) +
+  geom_point(color = "steelblue", size = 4) +
+  theme_bw()
 ```
 
 
@@ -328,7 +333,7 @@ data_for_model %>%
          T29 = (year == 29)*1,
          T30 = (year == 30)*1) %>% 
   filter(dplyr::between(year, -12, 30)) %>% 
-  lm(formula = log(quantity) ~ group*(Tm12 + Tm11 + Tm10 + Tm9 + Tm8 + Tm7 + Tm6 + Tm5 + Tm4 + Tm3 + Tm2 + Tm1 +T1 + T2 + T3 + T4 + T5 + T6 + T7 + T8 + T9 + T10 + T11 + T12 + T13 + T14 + T15 + T16 + T17 + T18 + T10 + T20 + T21 + T22 + T24 + T25 + T26 +T27 + T28 + T29 + T30) + group +  post +log(aquaculture + 1) + genus + as.factor(year) -1, data = .) %>%
+  lm(formula = log(quantity) ~ group*(Tm12 + Tm11 + Tm10 + Tm9 + Tm8 + Tm7 + Tm6 + Tm5 + Tm4 + Tm3 + Tm2 + Tm1 +T1 + T2 + T3 + T4 + T5 + T6 + T7 + T8 + T9 + T10 + T11 + T12 + T13 + T14 + T15 + T16 + T17 + T18 + T10 + T20 + T21 + T22 + T24 + T25 + T26 +T27 + T28 + T29 + T30) + group +  post + genus + as.factor(year) -1, data = .) %>%
   lmtest::coeftest(plm::vcovHC(., type = "HC2", cluster = "genus")) %>% 
   broom::tidy() %>% 
   filter(grepl(pattern = "(group:T)", x = term)) %>%
