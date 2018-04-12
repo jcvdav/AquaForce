@@ -1,0 +1,178 @@
+---
+output:
+  html_document:
+    code_folding: hide
+---
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+```
+
+
+# DiD
+
+```{r}
+x2 <- seq(1, 10)
+control <- c(1, 3, 2, 6, 7, 9, 6, 10, 9, 14)
+treatment <- c(3, 5, 4, 8, 9, 18, 16, 20, 18, 28)
+
+data <- data.frame(x2, control, treatment) %>% 
+  gather(group, y, -x2)
+
+plot1 <- ggplot() +
+  geom_point(data = data, aes(x = x2, y = y, color = group)) +
+  geom_line(data = data, aes(x = x2, y = y, color = group)) +
+  geom_line(aes(x = c(1, 5, 10), y = c(1, 7, 14)), color = "red") +
+  geom_line(aes(x = c(1, 5, 10), y = c(3, 9, 28)), color = "blue") +
+  geom_line(aes(x = c(1, 5, 10), y = c(3, 9, 16)), color = "blue", linetype = "dashed") +
+  geom_vline(xintercept = 5, linetype = "dashed") +
+  cowplot::theme_cowplot() +
+  scale_color_brewer(palette = "Set1") 
+  
+plotly::ggplotly(plot1)
+
+```
+
+```{r}
+data.frame(x2, control, treatment) %>% 
+  gather(group, y, -x2) %>% 
+  mutate(post = ifelse(x2 <=5, 0, 1)) %>% 
+  group_by(group, post) %>% 
+  summarize(mean_y = mean(y),
+            sdy = sd(y)) %>% 
+  ggplot(aes(x = as.factor(post), y = mean_y, fill = group)) +
+  geom_col(position = "dodge", color = "black") +
+  geom_errorbar(aes(ymin = mean_y - sdy, ymax = mean_y + sdy), position = position_dodge(1), width = 0.1, size = 1.5) +
+  scale_fill_brewer(palette = "Set1") +
+  cowplot::theme_cowplot()
+```
+
+
+```{r}
+data.frame(x2, control, treatment) %>% 
+  gather(group, y, -x2) %>% 
+  mutate(post = ifelse(x2 <=5, 0, 1)) %>% 
+  group_by(group, post) %>% 
+  summarize(mean_y = mean(y)) %>% 
+  spread(post, mean_y) %>% 
+  mutate(change = `1` - `0`) %>% 
+  knitr::kable()
+```
+
+
+$$
+y = \beta_0 + \beta_1P + \beta_2G + \beta_3P:G
+$$
+
+```{r}
+data.frame(x2, control, treatment) %>% 
+  gather(group, y, -x2) %>% 
+  mutate(post = ifelse(x2 <=5, 0, 1)) %>% 
+  lm(formula = y ~ post * group -1, data = .) %>% 
+  broom::tidy() %>% 
+  knitr::kable()
+```
+
+$$
+y = \beta_0 + \beta_1P + \beta_2G + \beta_3P:G
+$$
+```{r}
+data.frame(x2, control, treatment) %>% 
+  gather(group, y, -x2) %>% 
+  mutate(post = ifelse(x2 <=5, 0, 1)) %>% 
+  lm(formula = y ~ as.factor(x2) * group -1, data = .)  %>% 
+  broom::tidy() %>% 
+  knitr::kable()
+```
+
+
+
+# Robust SE
+
+```{r}
+set.seed(43)
+x <- round(runif(100, -5, 5), digits = 1)
+y <- 100*x+10
+
+y_noise <- y + rnorm(n = length(x), mean = 0, sd = 500)
+y_noise_cor <- y+(rnorm(length(x), mean = 0, sd = 100)*(abs(x)))
+# y_noise_cor2 <- y+(rnorm(length(x), mean = 0, sd = 100)*(-25+x^2))
+
+data.frame(x, y_noise, y_noise_cor) %>% 
+  gather(type, y, -x) %>% 
+  ggplot(aes(x = x, y = y, fill = type)) +
+  geom_point(size = 2, alpha = 0.7, shape = 21, color = "black") +
+  cowplot::theme_cowplot() +
+  scale_fill_brewer(palette = "Set1") +
+  facet_wrap(~type, ncol = 2, scales = "free") +
+  theme(legend.position = "none") +
+  geom_abline(slope = 100, intercept = 10, size = 2)
+
+```
+
+```{r}
+m1 <- lm(y~x)
+m2 <- lm(y_noise ~ x)
+m3 <- lm(y_noise_cor ~ x)
+```
+
+
+```{r, results = "asis"}
+stargazer::stargazer(m1, m2, m3, single.row = T, type = "html", header = F)
+```
+
+
+```{r}
+m3 %>% 
+  lmtest::coeftest(sandwich::vcovHC(., type = "HC2")) %>% 
+  broom::tidy() -> new_test
+
+robust_se <- new_test$std.error
+names(robust_se) <- new_test$term
+```
+
+```{r}
+make_robust <- function(model){
+  model %>% 
+    lmtest::coeftest(sandwich::vcovHC(., type = "HC2")) %>% 
+    broom::tidy() -> new_test
+  
+  robust_se <- new_test$std.error
+  names(robust_se) <- new_test$term
+  
+  return(robust_se)
+}
+```
+
+```{r, results = "asis"}
+
+se_list <- list(m1, m2, m3) %>% 
+  map(make_robust)
+
+stargazer::stargazer(m1, m2, m3, single.row = T, type = "html", header = F, se = se_list, t.auto = T, p.auto = T)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

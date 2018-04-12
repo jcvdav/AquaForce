@@ -1,0 +1,352 @@
+---
+title: "Analysis"
+date: "Last updated on `r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+```{r}
+suppressPackageStartupMessages({
+  library(countrycode)
+  library(seaaroundus)
+  library(tidyverse)
+  library(magrittr)
+  library(here)
+})
+```
+
+# Setup
+
+## Load data
+
+```{r}
+FAO_ts <- readRDS(here("data","FAO_data.rds"))
+```
+
+```{r}
+FAO_sp_groups <- read.csv(file = here("raw_data","FAO","FAO_spp_groups.csv"), stringsAsFactors = FALSE) %>% 
+  janitor::clean_names() %>% 
+  select(species = x3alpha_code, family = family_group, order = order_group) %>% 
+  mutate(family = taxize::taxize_capwords(family, onlyfirst = T),
+         order = taxize::taxize_capwords(order, onlyfirst = T))
+
+# Load FAO species codes lookup table
+FAO_sp_codes <- read.csv(file = here("raw_data","FAO","FAO_sp_codes.csv"), stringsAsFactors = FALSE) %>% 
+  janitor::clean_names() %>% 
+  select(species = x3alpha_code, common_name = name_en, sci_name = scientific_name) %>% 
+  left_join(FAO_sp_groups, by = "species") %>% 
+  mutate(stop = str_locate(string = sci_name, pattern = " ")[, 1],
+         genus = substring(text = sci_name, first = 0, last = stop-1)) %>% 
+  select(order, family, genus, sci_name, common_name, species, family, order)
+```
+
+
+## Load user-defined functions
+
+```{r}
+source(file = here("scripts", "make_robust.R"))
+```
+
+# Identify treatment and control groups
+
+```{r, echo = F}
+cut <- 0.95
+```
+
+We are identifying treatment and control groups based on the following criteria:
+
+- Treated species are those for which aquaculture exists at the genus level and also have an existing fishery
+- Control species are thos for which aquaculture has never existed at the genus level
+
+```{r}
+# All genus that have had aquaculture
+A <- FAO_ts %>%
+  filter(source == "Aquaculture") %>%
+  group_by(source, genus) %>%
+  tally() %$%
+  genus
+
+# Al genus that neve had aquaculture
+Fi <- FAO_ts %>%
+  filter(!source == "Aquaculture") %>%
+  group_by(source, genus) %>%
+  tally() %$%
+  genus
+
+# Find intersections on the list
+treated <- intersect(A, Fi)
+control <- Fi[!Fi %in% intersect(A, Fi)]
+```
+
+We further reduce these groups and keep the genuses in the top `r paste(cut, "^th^")` percentile in terms of total fisheries production.
+
+```{r}
+# Treated genuses
+(select_treated <- FAO_ts %>% 
+  filter(genus %in% treated) %>%
+  filter(!family == "",
+         !is.na(genus),
+         source == "Catches") %>% 
+  group_by(genus) %>%
+  summarize(total = sum(quantity, na.rm = T)) %>%
+  arrange(desc(total)) %>% 
+  filter(total >= quantile(total, cut)) %>%
+  mutate(group = "treated") %>% 
+  mutate(rank = row_number(desc(total))))
+
+# Control genuses
+(select_control <- FAO_ts %>% 
+  filter(genus %in% control) %>%
+  filter(!family == "",
+         !is.na(genus),
+         source == "Catches") %>% 
+  group_by(genus) %>%
+  summarize(total = sum(quantity, na.rm = T)) %>%
+  arrange(desc(total)) %>% 
+  filter(total >= quantile(total, cut)) %>%
+  mutate(group = "control") %>% 
+  mutate(rank = row_number(desc(total))))
+```
+
+```{r, echo = F}
+# number of species in control families
+
+FAO_sp_codes %>%
+  filter(genus %in% select_control$genus) %>%
+  group_by(genus, species) %>%
+  tally() %>%
+  select(-n) %>%
+  group_by(genus) %>%
+  tally() %$%
+  sum(n) -> n_sp_control
+
+# number of species in treated families
+
+FAO_sp_codes %>%
+  filter(genus %in% select_treated$genus) %>%
+  group_by(genus, species) %>%
+  tally() %>%
+  select(-n) %>%
+  group_by(genus) %>%
+  tally() %$%
+  sum(n) -> n_sp_treated
+```
+
+These leaves us with a total of `r length(select_treated$genus)` and `r length(select_control$genus)` genuses containing `r n_sp_treated` and `n_sp_control` species in the treatment and control groups, respectively.
+
+We use the norrowed-down list of genuses to filter our entire data. The first step is to identify the year in which aquaculture began for each of the treated genuses. Since we need to have data predating the start of aquaculture to meassure the change in trend, we only keep species that have had at least 5 years of pre-treatment data.
+
+```{r}
+(aq_treated_genus <- FAO_ts %>%
+  filter(genus %in% select_treated$genus,
+         source == "Aquaculture") %>%
+  group_by(genus, year) %>% 
+  summarize(quantity = sum(quantity)) %>% 
+  ungroup() %>% 
+  group_by(genus) %>% 
+  summarize(year_start = min(year)) %>% 
+  ungroup() %>% 
+  arrange(year_start) %>% 
+  filter(year_start > 1955))
+```
+
+From the above, we see that the mean year when treatment began is `r mean(aq_treated_genus$year_start)` $\pm$ `r sd(aq_treated_genus$year_start)` (mean $\pm$ 1 SD).
+
+```{r}
+# Make control
+
+# Define pre - post cutoff as mean of treatment
+
+pre_post <- round(mean(aq_treated_genus$year_start)) #Define a better way of year-start
+
+control_group <- FAO_ts %>% 
+  filter(genus %in% select_control$genus) %>%
+  group_by(year, iso, genus, species, sci_name) %>% 
+  summarize(quantity = sum(quantity),
+            min_year = min(year)) %>% 
+  ungroup() %>% 
+  mutate(group = 0,
+         year_start = pre_post,
+         post = ifelse(year <= year_start, 0, 1),
+         aquaculture = 0) %>% 
+  select(year, country = iso, genus, species, sci_name, quantity, aquaculture, post, group, year_start)
+
+# Make treatment
+treatment_group_ac <- FAO_ts %>% 
+  filter(genus %in% aq_treated_genus$genus,
+         source == "Aquaculture") %>% 
+  group_by(year, genus) %>% 
+  summarize(aquaculture = sum(quantity)) %>% 
+  ungroup()
+
+treatment_group <- FAO_ts %>% 
+  filter(genus %in% aq_treated_genus$genus,
+         source == "Aquaculture") %>%
+  group_by(year, iso, genus, species, sci_name) %>% 
+  summarize(quantity = sum(quantity)) %>% 
+  ungroup() %>% 
+  left_join(aq_treated_genus, by = "genus") %>% 
+  mutate(group = 1,
+         post = ifelse(year <= year_start, 0, 1)) %>% 
+  left_join(treatment_group_ac, by = c("year", "genus")) %>% 
+  select(year, country = iso, genus, species, sci_name, quantity, aquaculture, post, group, year_start)
+```
+
+Now we put these data together
+
+```{r}
+data_for_model <- rbind(control_group, treatment_group) %>% 
+  filter(!country == "")
+```
+
+And save it:
+
+```{r}
+write.csv(x = data_for_model,
+          file = here("data", "data_for_model.csv"),
+          row.names = F)
+```
+
+# Analyses
+
+## Comments by Kyle:
+
+The diff-in-diff model you presented in class looked something like:
+
+$$y_{it} = \beta_1 Salmon_i * Post_t + \beta_2Salmon_i + \beta_3Post_t + e_{it}$$
+
+where Salmon_i is a dummy equal to one if i refers to a salmon and Post_t is a dummy equal to one if t is after the introduction of salmon aquaculture. This estimator basically fits a constant effect for all post aquaculture years.
+
+$$ln(quantity_{it}) = \beta_1 G_i\times Post_t + \beta_2G_i + \beta_3Post_t + \sum_{f = 1}^{30}\gamma_fF_f + ln(aquacultur+1) + \sum_{t = 1}^T\Omega_tt+ \epsilon_{it}$$
+
+We now have the data to fit the models above:
+
+```{r, results = "asis"}
+lm(log(quantity) ~ group*post + genus + country -1, data_for_model) %>% 
+  stargazer::stargazer(se = list(make_robust(., cluster = "genus")),
+                       t.auto = T,
+                       p.auto = T,
+                       single.row = T,
+                       omit = c("genus", "year", "country"),
+                       out = "table.html")
+```
+
+```{r}
+data_for_model %>% 
+  filter(group == 0) %>% 
+  mutate(years_since = year - year_start,
+         group = as.factor(group)) %>% 
+  group_by(years_since, group) %>% 
+  summarize(total = sum(quantity, na.rm = T)) %>%
+  ungroup() %>% 
+  ggplot(aes(x = years_since, y = total, color = group, group = group)) +
+  geom_line()
+```
+
+
+```{r, eval = F}
+data_for_model %>%
+  mutate(years_since = as.factor(as.integer(year - year_start)),
+                          group = as.factor(group)) %>%
+  lm(log(quantity) ~ group * years_since, data = .) %>%
+  lmtest::coeftest(vcov = sandwich::vcovHC(x = ., vcov = "H2")) %>%
+  broom::tidy() %>%
+  filter(grepl(pattern = "group1:years_", x = term)) %>% 
+  mutate(term = as.numeric(gsub(
+                          pattern = "group1:years_since",
+                          replacement = "",
+                          x = term))) %>%
+  ggplot(aes(x = term, y = estimate)) +
+  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error)) +
+  geom_point()
+```
+
+
+
+As an alternative, you can do what's called an "event study" plot where you now have:  
+
+$$y_{it} = \sum_{\frac{-12<s<30}{s \neq 0}} \beta_s * Salmon_i * event_s + \beta_2*Salmon_i + \beta_3*Post_t + e_{it}$$
+
+$$ln(Q) = \sum_{\frac{-12<s<30}{s \neq 0}} \beta_s G_i\times event_s + \beta_2G_i + \beta_3Post_t + \sum_{f = 1}^{30}\gamma_fF_f + ln(aquacultur+1) + \sum_{t = 1}^T\Omega_tt+ \epsilon_{it}$$
+
+where now $event_s$ are dummies that equal one for each year before and after the introduction of aquaculture. The year of the introduction will be the omitted variable. You effective estimate a time varying effect before and after aquaculture's introduction. The idea here is to allow the data to tell you what that response is over time. The coefficients prior to the treatment will serve as tests for differential pre-trends between lobster and salmon prior to the salmon aquaculture introduction. I want you guys to plot the $\beta_s$ coefficients and its associated standard errors. 
+
+```{r, eval = F}
+
+T0 <- tibble(term = "group:T0", estimate = 0, std.error = 0, statistic = 0, p.value = NA, year = 0)
+
+data_for_model %>% 
+  mutate(year = year - year_start,
+         Tm12 = (year == -12)*1,
+         Tm11 = (year == -12)*1,
+         Tm10 = (year == -10)*1,
+         Tm9 = (year == -9)*1,
+         Tm8 = (year == -8)*1,
+         Tm7 = (year == -7)*1,
+         Tm6 = (year == -6)*1,
+         Tm5 = (year == -5)*1,
+         Tm4 = (year == -4)*1,
+         Tm3 = (year == -3)*1,
+         Tm2 = (year == -2)*1,
+         Tm1 = (year == -1)*1,
+         T0 = (year == 0)*1,
+         T1 = (year == 1)*1,
+         T2 = (year == 2)*1,
+         T3 = (year == 3)*1,
+         T4 = (year == 4)*1,
+         T5 = (year == 5)*1,
+         T6 = (year == 6)*1,
+         T7 = (year == 7)*1,
+         T8 = (year == 8)*1,
+         T9 = (year == 9)*1,
+         T10 = (year == 10)*1,
+         T11 = (year == 11)*1,
+         T12 = (year == 12)*1,
+         T13 = (year == 13)*1,
+         T14 = (year == 14)*1,
+         T15 = (year == 15)*1,
+         T16 = (year == 16)*1,
+         T17 = (year == 17)*1,
+         T18 = (year == 18)*1,
+         T19 = (year == 19)*1,
+         T20 = (year == 20)*1,
+         T21 = (year == 21)*1,
+         T22 = (year == 22)*1,
+         T23 = (year == 23)*1,
+         T24 = (year == 24)*1,
+         T25 = (year == 25)*1,
+         T26 = (year == 26)*1,
+         T27 = (year == 27)*1,
+         T28 = (year == 28)*1,
+         T29 = (year == 29)*1,
+         T30 = (year == 30)*1) %>% 
+  filter(dplyr::between(year, -12, 30)) %>% 
+  lm(formula = log(quantity) ~ group*(Tm12 + Tm11 + Tm10 + Tm9 + Tm8 + Tm7 + Tm6 + Tm5 + Tm4 + Tm3 + Tm2 + Tm1 +T1 + T2 + T3 + T4 + T5 + T6 + T7 + T8 + T9 + T10 + T11 + T12 + T13 + T14 + T15 + T16 + T17 + T18 + T10 + T20 + T21 + T22 + T24 + T25 + T26 +T27 + T28 + T29 + T30) + group +  post +log(aquaculture + 1) + genus + as.factor(year) -1, data = .) %>%
+  lmtest::coeftest(plm::vcovHC(., type = "HC2", cluster = "genus")) %>% 
+  broom::tidy() %>% 
+  filter(grepl(pattern = "(group:T)", x = term)) %>%
+  mutate(year = substring(term, 8,10),
+         year = gsub(pattern = "m", replacement = "-", year),
+         year = as.numeric(year)) %>% 
+  rbind(T0) %>% 
+  ggplot(aes(x = year, y = estimate)) +
+  geom_ribbon(aes(ymin = estimate - std.error, ymax = estimate + std.error), fill = "gray", alpha = 0.5) +
+  geom_line(color = "red", size = 1) +
+  cowplot::theme_cowplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "years since aquaculture", y = bquote(beta[s]))
+```
+
+
+- Re do with 90% of cumulative production Aq instead of 90th percentile
+- Add price data from SAU
+- Add biomass from stock-assessement from RAM
+
+
