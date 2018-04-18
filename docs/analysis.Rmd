@@ -157,6 +157,14 @@ We use the norrowed-down list of genuses to filter our entire data. The first st
   filter(year_start > 1955))
 ```
 
+Let's look at the distribution of the initial years
+
+```{r}
+ggplot(aq_treated_genus, aes(x = year_start)) +
+  geom_density(fill = "grey") +
+  cowplot::theme_cowplot()
+```
+
 From the above, we see that the mean year when treatment began is `r mean(aq_treated_genus$year_start)` $\pm$ `r sd(aq_treated_genus$year_start)` (mean $\pm$ 1 SD).
 
 ```{r}
@@ -351,6 +359,99 @@ data_for_model %>%
 
 
 - Re do with 90% of cumulative production Aq instead of 90th percentile
+
+```{r}
+# Treated genuses
+(select_treated_2 <- FAO_ts %>% 
+  filter(genus %in% treated) %>%
+  filter(!family == "",
+         !is.na(genus),
+         source == "Catches") %>% 
+  group_by(genus) %>%
+  summarize(total = sum(quantity, na.rm = T)) %>%
+  ungroup() %>%  
+  mutate(total = total/sum(total)) %>% 
+  arrange(desc(total)) %>% 
+  mutate(cum_total = cumsum(total)) %>% 
+  filter(cum_total <= 0.9) %>%
+  mutate(group = "treated") %>% 
+  mutate(rank = row_number(desc(total))))
+
+# Control genuses
+(select_control_2 <- FAO_ts %>% 
+  filter(genus %in% control) %>%
+  filter(!family == "",
+         !is.na(genus),
+         source == "Catches") %>% 
+  group_by(genus) %>%
+  summarize(total = sum(quantity, na.rm = T)) %>%
+  ungroup() %>%  
+  mutate(total = total/sum(total)) %>% 
+  arrange(desc(total)) %>% 
+  mutate(cum_total = cumsum(total)) %>% 
+  filter(cum_total <= 0.9) %>%
+  mutate(group = "control") %>% 
+  mutate(rank = row_number(desc(total))))
+```
+
+Let's look at the cumulative weights:
+
+```{r}
+rbind(select_control_2, select_treated_2) %>% 
+  ggplot(aes(x = rank, y = cum_total, color = group)) +
+  geom_line(size = 1) +
+  cowplot::theme_cowplot() +
+  scale_color_brewer(palette = "Set1") +
+  labs(x = "number of species", y = "cumulative weight")
+```
+
+
+```{r}
+# number of species in control families
+
+FAO_sp_codes %>%
+  filter(genus %in% select_control_2$genus) %>%
+  group_by(genus, species) %>%
+  tally() %>%
+  select(-n) %>%
+  group_by(genus) %>%
+  tally() %$%
+  sum(n) -> n_sp_control_2
+
+# number of species in treated families
+
+FAO_sp_codes %>%
+  filter(genus %in% select_treated_2$genus) %>%
+  group_by(genus, species) %>%
+  tally() %>%
+  select(-n) %>%
+  group_by(genus) %>%
+  tally() %$%
+  sum(n) -> n_sp_treated_2
+```
+
+We can see that by using the top 90 species, our number of treated species goes from `r n_sp_treated` to `r n_sp_treated_2`, and the number of control species goes from `r n_sp_control` to `r n_sp_control_2`
+
+```{r}
+(aq_treated_genus_2 <- FAO_ts %>%
+  filter(genus %in% select_treated_2$genus,
+         source == "Aquaculture") %>%
+  group_by(genus, year) %>% 
+  summarize(quantity = sum(quantity)) %>% 
+  ungroup() %>% 
+  group_by(genus) %>% 
+  summarize(year_start = min(year)) %>% 
+  ungroup() %>% 
+  arrange(year_start) %>% 
+  filter(year_start > 1955))
+```
+
+```{r}
+ggplot(aq_treated_genus_2, aes(x = year_start)) +
+  geom_density(fill = "grey") +
+  cowplot::theme_cowplot()
+```
+
 - Add price data from SAU
 - Add biomass from stock-assessement from RAM
 
