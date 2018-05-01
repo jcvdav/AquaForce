@@ -231,6 +231,13 @@ p2 <- data_for_model_salmon_lobster %>%
 plot_grid(p1, p2, labels = "AUTO", ncol = 1)
 ```
 
+Looks good, let's export the data
+
+```{r}
+write.csv(data_for_model_salmon_lobster, here("data", "data_for_salmon_lobster_model.csv"), row.names = F)
+```
+
+
 ## Fit the models
 
 Subindices not provided in models for brevitty
@@ -297,6 +304,16 @@ $$
 model6 <- lm(log(landings) ~  group * post + country + as.factor(year) + aquaculture + species, data = data_for_model_salmon_lobster)
 ```
 
+Now we add price as a covariate:
+
+$$
+landings = \beta_0 + \beta_1Group + \beta_2Post + \beta_3 Group\times Post + \beta_4Country + \beta_5Year + \beta_6Aquaculture + \beta_7Spp + \beta_8Price + \epsilon
+$$
+
+```{r}
+model7 <- lm(log(landings) ~  group * post + country + as.factor(year) + aquaculture + species + price_per_ton_wild, data = data_for_model_salmon_lobster)
+```
+
 Now we interact the reatment variable with the years since:
 
 $$
@@ -304,13 +321,13 @@ landings = \beta_0 + \beta_1Group + \beta_2Years_since + \beta_3 Group\times Yea
 $$
 
 ```{r}
-model7 <- lm(log(landings) ~  group * as.factor(years_since) + country + as.factor(year) + aquaculture + species, data = data_for_model_salmon_lobster)
+model8 <- lm(log(landings) ~  group * as.factor(years_since) + country + as.factor(year) + aquaculture + species, data = data_for_model_salmon_lobster)
 ```
 
 And a similar approach, but using years since technological advance instead
 
 ```{r}
-model8 <- lm(log(landings) ~  group * as.factor(years_since_tech_improve) + country + as.factor(year) + aquaculture + species, data = data_for_model_salmon_lobster)
+model9 <- lm(log(landings) ~  group * as.factor(years_since_tech_improve) + country + as.factor(year) + aquaculture + species, data = data_for_model_salmon_lobster)
 ```
 
 
@@ -319,7 +336,7 @@ model8 <- lm(log(landings) ~  group * as.factor(years_since_tech_improve) + coun
 For year since
 
 ```{r}
-broom::tidy(model7) %>%
+broom::tidy(model8) %>%
   filter(grepl(pattern = "group1:as.factor", x = term)) %>% 
   mutate(term = str_remove(term, "group1:as.factor\\(years_since\\)"),
          term = as.numeric(term)) %>%
@@ -333,7 +350,7 @@ broom::tidy(model7) %>%
 For years since tech advance
 
 ```{r}
-broom::tidy(model8) %>%
+broom::tidy(model9) %>%
   filter(grepl(pattern = "group1:as.factor", x = term)) %>% 
   mutate(term = str_remove(term, "group1:as.factor\\(years_since_tech_improve\\)"),
          term = as.numeric(term)) %>%
@@ -418,7 +435,7 @@ data_for_model_salmon_lobster %>%
 ## Table
 
 ```{r, results = "asis"}
-stargazer::stargazer(model1, model2, model3, model4, model5, model6, model7, model8,
+stargazer::stargazer(model1, model2, model3, model4, model5, model6, model7, model8, model9,
                      single.row = T,
                      type = "html",
                      omit = c("country", "species", "year"),
