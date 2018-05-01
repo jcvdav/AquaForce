@@ -8,8 +8,12 @@ Structure of the repository
 AquaForce:.
 ├───data
 ├───docs
+│   ├───exploring_data
+│   └───se_DiD
 ├───raw_data
-│   └───Stock Summary Files
+│   ├───FAO
+│   ├───RAM
+│   │   └───Stock Summary Files
+│   └───SAU
 └───scripts
-
 ```
