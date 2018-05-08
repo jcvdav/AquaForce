@@ -121,7 +121,7 @@ We further reduce these groups and keep the genuses in the top `r paste(cut, "^t
 FAO_sp_codes %>%
   filter(genus %in% select_control$genus) %>%
   group_by(genus, species) %>%
-  tally() %>%
+  tally() %>% 
   select(-n) %>%
   group_by(genus) %>%
   tally() %$%
@@ -132,7 +132,7 @@ FAO_sp_codes %>%
 FAO_sp_codes %>%
   filter(genus %in% select_treated$genus) %>%
   group_by(genus, species) %>%
-  tally() %>%
+  tally() %>% 
   select(-n) %>%
   group_by(genus) %>%
   tally() %$%
@@ -407,7 +407,7 @@ rbind(select_control_2, select_treated_2) %>%
 
 
 ```{r}
-# number of species in control families
+# number of species in control genus
 
 FAO_sp_codes %>%
   filter(genus %in% select_control_2$genus) %>%
@@ -418,7 +418,7 @@ FAO_sp_codes %>%
   tally() %$%
   sum(n) -> n_sp_control_2
 
-# number of species in treated families
+# number of species in treated genus
 
 FAO_sp_codes %>%
   filter(genus %in% select_treated_2$genus) %>%
@@ -452,7 +452,6 @@ ggplot(aq_treated_genus_2, aes(x = year_start)) +
   cowplot::theme_cowplot()
 ```
 
-- Add price data from SAU
-- Add biomass from stock-assessement from RAM
+
 
 

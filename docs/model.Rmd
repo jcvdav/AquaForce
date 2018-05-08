@@ -1,0 +1,184 @@
+---
+title: "Theory and model"
+output: html_document
+---
+
+## The model
+
+The model is given by:
+
+$$
+\begin{split}
+\frac{dB}{dt} &= r_bB(1 - \frac{B}{K_b}) - C \\
+\frac{dC}{dt} &= rC(1-\frac{C}{K} + \alpha A) \\
+\frac{dA}{dt} &= pA(1 - \frac{A}{M})
+\end{split}
+$$
+
+Where, B is for biomass, C is for catches, and A is for Aquaculture
+
+## Load packages
+
+```{r}
+suppressPackageStartupMessages({
+  library(deSolve)
+  library(tidyverse)
+})
+```
+
+## The function
+
+```{r}
+system <- function(t, values, params){
+  # Extract initial conditions
+  B <- values[1]
+  C <- values[2]
+  A <- values[3]
+  
+  # Extract parameters
+  rb <- params[1]
+  r <- params[2]
+  a <- params[3]
+  p <- params[4]
+  Kb <- params[5]
+  K <- params[6]
+  M <- params[7]
+  
+  # Define system
+  dBdt <- B * rb * (1 - (B/Kb)) - C
+  dCdt <-  C * r * (1-(C/K)) + a * A
+  dAdt <- A * p * (1-(A/M))
+  # Return results
+  return(list(c(dBdt, dCdt, dAdt)))
+}
+```
+
+## Define parameters and initial conditons
+
+```{r}
+t <- 0:10
+
+B0 <- 200
+C0 <- 1
+A0 <- 0
+initial_values <- c(B0, C0, A0)
+
+# Define parameters
+rb <- 1.2
+r <- 1
+a <- 1
+p <- 0.5
+Kb <- 80
+K <- 10
+M <- 20
+
+params <- c(rb, r, a, p, Kb, K, M)
+```
+
+## Run first and second parts with $\alpha = 1$
+
+```{r}
+init <- lsoda(y = initial_values, times = t, func = system, parms = params) %>%
+  as.data.frame() %>% 
+  magrittr::set_colnames(c("time", "B", "C", "A"))
+
+t2 <- 10:20
+initial_values2 <- c(init$B[length(init$B)], init$C[length(init$C)], 0.1)
+
+final <- lsoda(y = initial_values2, times = t2, func = system, parms = params) %>%
+          as.data.frame() %>% 
+          magrittr::set_colnames(c("time", "B", "C", "A"))
+```
+
+## Plot
+
+```{r}
+rbind(init, final) %>% 
+  # mutate(total = C + A) %>% 
+  select(-B) %>%  
+  gather(Variable, Value, -time) %>%
+  ggplot(aes(x = time, y = Value, color = Variable)) +
+  geom_line(size = 1) +
+  theme_classic() +
+  scale_color_brewer(palette = "Set1") +
+  geom_vline(xintercept = 10, linetype = "dashed")
+```
+
+## Run first and second parts with $\alpha = -1$
+
+```{r}
+params <- c(rb, r, -a, p, Kb, K, M)
+
+init <- lsoda(y = initial_values, times = t, func = system, parms = params) %>%
+  as.data.frame() %>% 
+  magrittr::set_colnames(c("time", "B", "C", "A"))
+
+t2 <- 10:20
+initial_values2 <- c(init$B[length(init$B)], init$C[length(init$C)], 0.1)
+
+final <- lsoda(y = initial_values2, times = t2, func = system, parms = params) %>%
+          as.data.frame() %>% 
+          magrittr::set_colnames(c("time", "B", "C", "A"))
+```
+
+## Plot
+
+```{r}
+rbind(init, final) %>% 
+  # mutate(total = C + A) %>% 
+  select(-B) %>% 
+  gather(Variable, Value, -time) %>%
+  ggplot(aes(x = time, y = Value, color = Variable)) +
+  geom_line(size = 1) +
+  theme_classic() +
+  scale_color_brewer(palette = "Set1") +
+  geom_vline(xintercept = 10, linetype = "dashed")
+```
+
+## Run first and second parts with $\alpha = 0$
+
+```{r}
+params <- c(rb, r, 0, p, Kb, K, M)
+
+init <- lsoda(y = initial_values, times = t, func = system, parms = params) %>%
+  as.data.frame() %>% 
+  magrittr::set_colnames(c("time", "B", "C", "A"))
+
+t2 <- 10:20
+initial_values2 <- c(init$B[length(init$B)], init$C[length(init$C)], 0.1)
+
+final <- lsoda(y = initial_values2, times = t2, func = system, parms = params) %>%
+          as.data.frame() %>% 
+          magrittr::set_colnames(c("time", "B", "C", "A"))
+```
+
+## Plot
+
+```{r}
+rbind(init, final) %>% 
+  # mutate(total = C + A) %>% 
+  select(-B) %>% 
+  gather(Variable, Value, -time) %>%
+  ggplot(aes(x = time, y = Value, color = Variable)) +
+  geom_line(size = 1) +
+  theme_classic() +
+  scale_color_brewer(palette = "Set1") +
+  geom_vline(xintercept = 10, linetype = "dashed")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
