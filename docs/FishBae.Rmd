@@ -13,14 +13,18 @@ knitr::opts_chunk$set(echo = TRUE)
 #Questions for Grace
 1. Do we need to code in JAGS?
 - we're considering just R and are considering STAN
+
 2.The length of the presentation might be long considering where we're at vs. where the class is at. What might be more appropriate?
 
 #Task List for Phoebe & Erin
 - ~~copy/paste from Juanca~~
-  - find CSV & data so code connects and runs
+  - figure out what data sources we need in order to create Bayesian regression
+   - I think we're at "fao_salmon_lobster.csv" & "all_salmon_lobster.csv"
+  - beautify graph 
 - copy/paste GLM code from R
 - read 3.3 of stats book
 - research alpha/beta for GLMs
+- **combine Bay line w/ Juanca graph**
 - consider including RAM legacy data if we want to provide a fuller story
   - consider analysis type
 - Presentation
@@ -39,78 +43,22 @@ library(tidyverse)
 
 #Salmon and Lobster Code from Juanca
 
-##Put data together
-We are using FAO’s data for **aquaculture production** and **wild fisheries**.
 
+##Salmon-Lobster Graph
 ```{r}
-FAO_sp_groups <- read.csv(file = here("raw_data","FAO","FAO_spp_groups.csv"), stringsAsFactors = FALSE) %>% 
-  janitor::clean_names() %>% 
-  select(species = x3alpha_code, family = family_group, order = order_group) %>% 
-  mutate(family = taxize::taxize_capwords(family, onlyfirst = T),
-         order = taxize::taxize_capwords(order, onlyfirst = T))
 
-# Load FAO species codes lookup table
-FAO_sp_codes <- read.csv(file = here("raw_data","FAO","FAO_sp_codes.csv"), stringsAsFactors = FALSE) %>% 
-  janitor::clean_names() %>% 
-  select(species = x3alpha_code, common_name = name_en, sci_name = scientific_name) %>% 
-  left_join(FAO_sp_groups, by = "species") %>% 
-  mutate(stop = str_locate(string = sci_name, pattern = " ")[, 1],
-         genus = substring(text = sci_name, first = 0, last = stop-1)) %>% 
-  select(order, family, genus, sci_name, common_name, species, family, order)
-
-# Load FAO country codes lookup table
-FAO_cty_codes <- read.csv(file = here("raw_data","FAO","FAO_cty_codes.csv"), stringsAsFactors = F) %>% 
-  select(country = UN_CODE, iso = Name_en)
-
-# Load FAO aquaculture timeseries
-FAO_ac_ts <- read.csv(file = here("raw_data","FAO","FAO_ac_ts.csv"), stringsAsFactors = F) %>%
-  janitor::clean_names() %>% 
-  filter(quantity > 0) %>% 
-  left_join(FAO_sp_codes, by = "species") %>% 
-  left_join(FAO_cty_codes, by = "country") %>% 
-  janitor::clean_names() %>% 
-  mutate(country = countrycode::countrycode(sourcevar = iso,
-                                            origin = "iso3c",
-                                            destination = "country.name",
-                                            warn = F),
-         source = "Aquaculture") %>% 
-  group_by(year, production_area, country, iso, source, species, common_name, sci_name, genus, family, order) %>% 
-  summarize(quantity = sum(quantity, na.rm = T), value = sum(value, na.rm = T)) %>% 
-  ungroup()
-
-# Load FAO fisheries production timeseries
-FAO_fi_ts <- read.csv(file = here("raw_data","FAO","FAO_fi_ts.csv"), stringsAsFactors = F) %>% 
-  janitor::clean_names() %>% 
-  filter(!unit == "no", quantity > 0) %>% 
-  left_join(FAO_sp_codes, by = "species") %>% 
-  left_join(FAO_cty_codes, by = "country") %>% 
-  mutate(country = countrycode::countrycode(sourcevar = iso,
-                                            origin = "iso3c",
-                                            destination = "country.name",
-                                            warn = F),
-         source = "Catches",
-         value = NA) %>% 
-  select(year, production_area = fishing_area, country, iso, source, species, common_name, sci_name, genus, family, order, quantity, value)
-
-# Join them together
-FAO_ts <- rbind(FAO_ac_ts, FAO_fi_ts) %>% 
-  arrange(year, country, source, species, common_name, sci_name, genus, family, order, quantity, value)
-
-
-```
-
-##Get salmon and lobster data
-```{r}
-## from FAO
-fao_salmon_lobster <- FAO_ts %>% 
-  mutate(lobster = grepl(pattern = "lobster", x = common_name),
-         salmon = grepl(pattern = "salmon", x = common_name),
-         general_name = case_when(lobster ~ "Lobster",
-                                  TRUE ~ "Salmon")) %>% 
-  filter(lobster | salmon) %>% 
-  mutate(common_name = tolower(gsub(pattern = " nei", replacement = "", x = common_name)),
-          common_name = gsub("\\s*\\([^\\)]+\\)", "", common_name)
-
+fao_salmon_lobster  %>%
+  group_by(year, source, general_name) %>% 
+  summarize(quantity = sum(quantity)) %>% 
+  filter(!(general_name == "Lobster" & source == "Aquaculture")) %>% 
+  rename(Species = general_name) %>% 
+  ggplot(aes(x = year, y = quantity/1000000, color = source, linetype = Species, group = paste(source, Species))) +
+  geom_line(size = 1) +
+  scale_color_brewer(palette = "Set1") +
+  geom_vline(xintercept = 1962, linetype = "dashed") +
+  geom_text(aes(x = 1975, y = 2.5, label = "Salmon aquaculture begins"), color = "black", size = 4) +
+  labs(x = "Year", y = "Quantities (million MT)", caption = "(Data from FAO: www.fao.org/fishery/statistics/)") +
+  theme_minimal()
 
 ```
 
