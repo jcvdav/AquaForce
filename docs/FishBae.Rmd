@@ -16,10 +16,16 @@ knitr::opts_chunk$set(echo = TRUE)
 2.The length of the presentation might be long considering where we're at vs. where the class is at. What might be more appropriate?
 
 #Task List for Phoebe & Erin
-- copy/paste from Juanca
+- ~~copy/paste from Juanca~~
+  - find CSV & data so code connects and runs
 - copy/paste GLM code from R
 - read 3.3 of stats book
 - research alpha/beta for GLMs
+- consider including RAM legacy data if we want to provide a fuller story
+  - consider analysis type
+- Presentation
+  - pull graphs from early AquaForce
+  
 
 
 
@@ -32,11 +38,83 @@ library(tidyverse)
 
 
 #Salmon and Lobster Code from Juanca
-```{r}
 
+##Put data together
+We are using FAO’s data for **aquaculture production** and **wild fisheries**.
+
+```{r}
+FAO_sp_groups <- read.csv(file = here("raw_data","FAO","FAO_spp_groups.csv"), stringsAsFactors = FALSE) %>% 
+  janitor::clean_names() %>% 
+  select(species = x3alpha_code, family = family_group, order = order_group) %>% 
+  mutate(family = taxize::taxize_capwords(family, onlyfirst = T),
+         order = taxize::taxize_capwords(order, onlyfirst = T))
+
+# Load FAO species codes lookup table
+FAO_sp_codes <- read.csv(file = here("raw_data","FAO","FAO_sp_codes.csv"), stringsAsFactors = FALSE) %>% 
+  janitor::clean_names() %>% 
+  select(species = x3alpha_code, common_name = name_en, sci_name = scientific_name) %>% 
+  left_join(FAO_sp_groups, by = "species") %>% 
+  mutate(stop = str_locate(string = sci_name, pattern = " ")[, 1],
+         genus = substring(text = sci_name, first = 0, last = stop-1)) %>% 
+  select(order, family, genus, sci_name, common_name, species, family, order)
+
+# Load FAO country codes lookup table
+FAO_cty_codes <- read.csv(file = here("raw_data","FAO","FAO_cty_codes.csv"), stringsAsFactors = F) %>% 
+  select(country = UN_CODE, iso = Name_en)
+
+# Load FAO aquaculture timeseries
+FAO_ac_ts <- read.csv(file = here("raw_data","FAO","FAO_ac_ts.csv"), stringsAsFactors = F) %>%
+  janitor::clean_names() %>% 
+  filter(quantity > 0) %>% 
+  left_join(FAO_sp_codes, by = "species") %>% 
+  left_join(FAO_cty_codes, by = "country") %>% 
+  janitor::clean_names() %>% 
+  mutate(country = countrycode::countrycode(sourcevar = iso,
+                                            origin = "iso3c",
+                                            destination = "country.name",
+                                            warn = F),
+         source = "Aquaculture") %>% 
+  group_by(year, production_area, country, iso, source, species, common_name, sci_name, genus, family, order) %>% 
+  summarize(quantity = sum(quantity, na.rm = T), value = sum(value, na.rm = T)) %>% 
+  ungroup()
+
+# Load FAO fisheries production timeseries
+FAO_fi_ts <- read.csv(file = here("raw_data","FAO","FAO_fi_ts.csv"), stringsAsFactors = F) %>% 
+  janitor::clean_names() %>% 
+  filter(!unit == "no", quantity > 0) %>% 
+  left_join(FAO_sp_codes, by = "species") %>% 
+  left_join(FAO_cty_codes, by = "country") %>% 
+  mutate(country = countrycode::countrycode(sourcevar = iso,
+                                            origin = "iso3c",
+                                            destination = "country.name",
+                                            warn = F),
+         source = "Catches",
+         value = NA) %>% 
+  select(year, production_area = fishing_area, country, iso, source, species, common_name, sci_name, genus, family, order, quantity, value)
+
+# Join them together
+FAO_ts <- rbind(FAO_ac_ts, FAO_fi_ts) %>% 
+  arrange(year, country, source, species, common_name, sci_name, genus, family, order, quantity, value)
 
 
 ```
+
+##Get salmon and lobster data
+```{r}
+## from FAO
+fao_salmon_lobster <- FAO_ts %>% 
+  mutate(lobster = grepl(pattern = "lobster", x = common_name),
+         salmon = grepl(pattern = "salmon", x = common_name),
+         general_name = case_when(lobster ~ "Lobster",
+                                  TRUE ~ "Salmon")) %>% 
+  filter(lobster | salmon) %>% 
+  mutate(common_name = tolower(gsub(pattern = " nei", replacement = "", x = common_name)),
+          common_name = gsub("\\s*\\([^\\)]+\\)", "", common_name)
+
+
+```
+
+
 
 #Code for GLM in R
 ```{r}
@@ -46,6 +124,36 @@ library(tidyverse)
 ```
 
 
+
+##Load RAM Legacy database
+```{r}
+ram <- read.csv(here("raw_data","RAM", "RAM.csv"), stringsAsFactors = F) %>% 
+  janitor::clean_names()
+
+```
+
+```{r}
+lobster_salmon_ram <- ram %>% 
+  mutate(lobster = grepl(pattern = "lobster", x = stocklong),
+         salmon = grepl(pattern = "salmon", x = stocklong),
+         general_name = case_when(lobster ~ "Lobster",
+                                  TRUE ~ "Salmon")) %>% 
+  filter(lobster | salmon,
+         tsid == "BdivBmsytouse-dimensionless")
+
+```
+
+###Graph of RAM Salmon and Lobster data
+```{r}
+
+lobster_salmon_ram %>% 
+  group_by(tsyear, general_name) %>% 
+  summarize(tsvalue = median(tsvalue, na.rm = T)) %>% 
+  ggplot(aes(x = tsyear, y = tsvalue, color = general_name, group = general_name)) +
+  geom_line(size = 1) +
+  theme_bw()
+
+```
 
 
 
