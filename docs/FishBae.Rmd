@@ -11,12 +11,14 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 #Questions for Grace
-1. Do we need to code in JAGS?
+1. What do we need to send Grace analysis wise?
+
+2. Do we need to code in JAGS?
 - we're considering just R and are considering STAN
 
-2.The length of the presentation might be long considering where we're at vs. where the class is at. What might be more appropriate?
+3.The length of the presentation might be long considering where we're at vs. where the class is at. What might be more appropriate?
 
-3. For a GLM, the book has us generate data. We don't have to do this since we have our own data correct?
+4. For a GLM, the book has us generate data. We don't have to do this since we have our own data correct?
 - Do we need to generate C?
 - What is set.seed()?
 
@@ -177,16 +179,11 @@ stargazer::stargazer(modeltestBAY,
 ##Graphing our Model
 ```{r}
 
-quartz()
-ggplot(salmon_lobster, aes(x = year, y = quantity) + 
-         geom_point() +
-         stat_smooth(method=glm, family=binomial, se=modeltestBAY))
 
-ggplot( mydf, aes(x=position, y=prob)) +
-  geom_point() +
-  geom_smooth(method = "glm", 
-    method.args = list(family = "binomial"), 
-    se = FALSE) 
+ggplot(salmon_lobster, aes(year, quantity)) + 
+         geom_point() +
+       stat_smooth(method=glm, family=poisson, se = F) #how do we tell it what model we're running?? #Family = binomial and family = poisson result in the same thing rn
+
 
 ```
 
