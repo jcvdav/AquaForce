@@ -45,7 +45,8 @@ knitr::opts_chunk$set(echo = TRUE)
 #Loading Packages
 ```{r}
 library(tidyverse)
-
+library(stargazer)
+library(ggplot2)
 
 ```
 
@@ -153,13 +154,42 @@ stargazer::stargazer(fm,
 ####Our test
 ```{r}
 
-modeltestBAY <- glm(general_name ~ quantity * year + I(year^2) + I(year^3), family = "poisson", data = fao_salmon_lobster)
+salmon_lobster <- fao_salmon_lobster %>%
+  mutate(binary = ifelse(general_name == "Salmon", 1, 0))
+# View(salmon_lobster)  
+
+modeltestBAY <- glm(binary ~ quantity * year + I(year^2) + I(year^3), family = "poisson", data = salmon_lobster)
 summary(modeltestBAY)
 
-modeltestFREQ <- glm(general_name ~ quantity * year, family = "binomial", data = fao_salmon_lobster)
+modeltestFREQ <- glm(binary ~ quantity * year, family = "binomial", data = salmon_lobster)
 summary(modeltestFREQ)
 
+stargazer::stargazer(modeltestBAY,
+                     type = "html",
+                     header = F,
+                     single.row = T,
+                     intercept.bottom = F,
+                     intercept.top = T)
+
+
+
 ```
+##Graphing our Model
+```{r}
+
+quartz()
+ggplot(salmon_lobster, aes(x = year, y = quantity) + 
+         geom_point() +
+         stat_smooth(method=glm, family=binomial, se=modeltestBAY))
+
+ggplot( mydf, aes(x=position, y=prob)) +
+  geom_point() +
+  geom_smooth(method = "glm", 
+    method.args = list(family = "binomial"), 
+    se = FALSE) 
+
+```
+
 
 
 ###JAGS Approach
