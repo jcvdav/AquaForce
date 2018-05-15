@@ -33,7 +33,7 @@ knitr::opts_chunk$set(echo = TRUE)
 - figure out if we need to use random error graph
 - what is C?
 - update GLM code to fit out data needs
-  - select by salmon and lobster
+  - ~~select by salmon and lobster~~
 - beautify regression table
 - **combine Bay line w/ Juanca graph**
 - consider including RAM legacy data if we want to provide a fuller story
