@@ -16,15 +16,23 @@ knitr::opts_chunk$set(echo = TRUE)
 
 2.The length of the presentation might be long considering where we're at vs. where the class is at. What might be more appropriate?
 
+3. For a GLM, the book has us generate data. We don't have to do this since we have our own data correct?
+- Do we need to generate C?
+- What is set.seed()?
+
 #Task List for Phoebe & Erin
 - ~~copy/paste from Juanca~~
-  - figure out what data sources we need in order to create Bayesian regression
-   - I think we're at "fao_salmon_lobster.csv" & "all_salmon_lobster.csv"
+  - ~~figure out what data sources we need in order to create Bayesian regression~~
+  - ~~I think we're at "fao_salmon_lobster.csv" & "all_salmon_lobster.csv"~~
   - beautify graph 
 - ~~copy/paste GLM code from R~~
 - read 3.3 of stats book
 - research alpha/beta for GLMs
+- figure out if we need to use random error graph
+- what is C?
 - update GLM code to fit out data needs
+  - select by salmon and lobster
+- beautify regression table
 - **combine Bay line w/ Juanca graph**
 - consider including RAM legacy data if we want to provide a fuller story
   - consider analysis type
@@ -71,6 +79,8 @@ The poisson GLM is described by a noise or random parameter following a Poisson 
 
 Ci∼Poisson(λi)
 Here, λi is the expected count (mean response) related to the response. It is the link between the systematic and stochastic parts of the GLM:
+C = What is C?
+i = number of years
 
 log(λi)=ηiλi=eηi
 
@@ -87,22 +97,46 @@ Intuitively, α and β are the parameters of interest, and Xi represents the val
 ###everything needs to be switched out to fit our work
 data_fn() %>% #need to change
   ggplot(aes(x = year, y = C)) +
-  geom_line(aes(y = expected_count), size = 1) + #update to fit our data
+  geom_line(aes(y = expected_count), size = 1) + 
   geom_point(shape = 21, fill = "steelblue", size = 4) +
   labs(x = "year", y = "Population size")
+
 
 ```
 Black line represents the signal, blue dots represent the signal plus the random error introduced through a poisson process.
 
 
+
+#Our Model
+Count = "quantity"
+Years = 65 years, 1950 --> 2015
+Total data points: 13,293
+
+
+
+
 ###R Approach
 In R, we apply a GLM using the glm function, to which we must specify the formula (the systematic part) and the name of the family that generates the error distribution.
+
+
 ```{r}
 
 
 ###everything needs to be switched out to fit our work
-set.seed(43)
-data <- data_fn() 
+set.seed(43) #The set.seed you use is the starting number you use in a sequence of numbers from random generation. How should we pick the set.seed?
+
+data <- data_fn()
+
+fm <- glm(C ~ year + I(year^2) + I(year^3), family = "poisson", data = data)
+
+stargazer::stargazer(fm,
+                     type = "html",
+                     header = F,
+                     single.row = T,
+                     intercept.bottom = F,
+                     intercept.top = T)
+
+data <- data_fn()
 
 fm <- glm(C ~ year + I(year^2) + I(year^3), family = "poisson", data = data)
 
@@ -114,6 +148,16 @@ stargazer::stargazer(fm,
                      intercept.top = T)
 
 
+```
+
+####Our test
+```{r}
+
+modeltestBAY <- glm(general_name ~ quantity * year + I(year^2) + I(year^3), family = "poisson", data = fao_salmon_lobster)
+summary(modeltestBAY)
+
+modeltestFREQ <- glm(general_name ~ quantity * year, family = "binomial", data = fao_salmon_lobster)
+summary(modeltestFREQ)
 
 ```
 
