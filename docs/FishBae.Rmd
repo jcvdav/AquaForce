@@ -65,13 +65,59 @@ fao_salmon_lobster  %>%
 
 
 #Code for GLM in R
+**Poisson GLM in R and WinBUGS for modeling time series of counts**
+The poisson GLM is described by a noise or random parameter following a Poisson distribution. In this sense, the random part of the response (or the statistical distribution) is given by:
+
+Ci∼Poisson(λi)
+Here, λi is the expected count (mean response) related to the response. It is the link between the systematic and stochastic parts of the GLM:
+
+log(λi)=ηiλi=eηi
+
+And ηi is simply the linear predictor (the systematic or signal part of the response):
+
+ηi=α+β∗Xi
+
+Intuitively, α and β are the parameters of interest, and Xi represents the value of the covariate (predictor variable) X at year i.
+
+###Visualizing the Random Error introduced through a Poisson Process
+- *need to determine if this is important or nice to have*
 ```{r}
+
+###everything needs to be switched out to fit our work
+data_fn() %>% #need to change
+  ggplot(aes(x = year, y = C)) +
+  geom_line(aes(y = expected_count), size = 1) + #update to fit our data
+  geom_point(shape = 21, fill = "steelblue", size = 4) +
+  labs(x = "year", y = "Population size")
+
+```
+Black line represents the signal, blue dots represent the signal plus the random error introduced through a poisson process.
+
+
+###R Approach
+In R, we apply a GLM using the glm function, to which we must specify the formula (the systematic part) and the name of the family that generates the error distribution.
+```{r}
+
+
+###everything needs to be switched out to fit our work
+set.seed(43)
+data <- data_fn() 
+
+fm <- glm(C ~ year + I(year^2) + I(year^3), family = "poisson", data = data)
+
+stargazer::stargazer(fm,
+                     type = "html",
+                     header = F,
+                     single.row = T,
+                     intercept.bottom = F,
+                     intercept.top = T)
 
 
 
 ```
 
 
+#Considering Using RAM Data
 
 ##Load RAM Legacy database
 ```{r}
