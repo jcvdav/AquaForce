@@ -38,6 +38,7 @@ knitr::opts_chunk$set(echo = TRUE)
   - ~~select by salmon and lobster~~
   - ~~make data frame for GLM~~
   - why is regression line at 0?
+  - go through tidying of data in order to better mirror Juanca graph
 - **combine Bay line w/ Juanca graph**
 - **For Grace's analysis**
   - beautify graph
@@ -187,6 +188,7 @@ stargazer::stargazer(modeltestBAY,
 
 ```
 ##Saving predictions into dataframe
+- we can also try: https://blogs.uoregon.edu/rclub/2016/04/05/plotting-your-logistic-regression-models/
 ```{r}
 
 # save predictions of the model in the new data frame 
@@ -203,7 +205,6 @@ predictedBAY_df <- data.frame(samlob_pred = predict(modeltestBAY, salmon_lobster
 
 ggplot(salmon_lobster, aes(year, quantity)) + 
       geom_point() +
-      # stat_smooth(method=glm, family=poisson, se = F)  #how do we tell it what model we're running?? #Family = binomial and family = poisson result in the same thing rn. #se = F means we're not including the standard errors
     geom_line(color='red',data = fortify(predictedBAY_df), aes(x=samlob_pred, y=hp)) #what does fortify do?
 
 
