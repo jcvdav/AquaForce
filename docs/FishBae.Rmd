@@ -20,29 +20,37 @@ knitr::opts_chunk$set(echo = TRUE)
 
 4. For a GLM, the book has us generate data. We don't have to do this since we have our own data correct?
 - Do we need to generate C?
-- What is set.seed()?
+
 
 #Task List for Phoebe & Erin
 - ~~copy/paste from Juanca~~
   - ~~figure out what data sources we need in order to create Bayesian regression~~
   - ~~I think we're at "fao_salmon_lobster.csv" & "all_salmon_lobster.csv"~~
-  - beautify graph 
 - ~~copy/paste GLM code from R~~
-- read 3.3 of stats book
-- research alpha/beta for GLMs
-- figure out if we need to use random error graph
-- what is C?
-- update GLM code to fit out data needs
+- **research GLMs**
+  - alpha
+  - beta
+  - C
+  - priors
+  - read 3.3 of stats book
+  - figure out if we need to use random error graph
+- **update GLM code to fit out data needs**
   - ~~select by salmon and lobster~~
-- beautify regression table
+  - ~~make data frame for GLM~~
+  - why is regression line at 0?
 - **combine Bay line w/ Juanca graph**
+- **For Grace's analysis**
+  - beautify graph
+  - beautify regression table
+- **Presentation**
+  - pull graphs from early AquaForce
+
+
+**Beyond**
 - consider including RAM legacy data if we want to provide a fuller story
   - consider analysis type
-- Presentation
-  - pull graphs from early AquaForce
+
   
-
-
 
 #Loading Packages
 ```{r}
@@ -54,7 +62,9 @@ library(ggplot2)
 
 
 #Salmon and Lobster Code from Juanca
-
+- Salmon-lobsert graph
+- code for GLM in R
+- code for GLM in JAGS
 
 ##Salmon-Lobster Graph
 ```{r}
@@ -176,13 +186,37 @@ stargazer::stargazer(modeltestBAY,
 
 
 ```
-##Graphing our Model
+##Saving predictions into dataframe
+```{r}
+
+# save predictions of the model in the new data frame 
+# together with variable you want to plot against
+predictedBAY_df <- data.frame(samlob_pred = predict(modeltestBAY, salmon_lobster), hp=salmon_lobster$quantity)
+#View(predictedBAY_df)
+
+```
+
+
+##Graphing our Model - Take 1
 ```{r}
 
 
 ggplot(salmon_lobster, aes(year, quantity)) + 
-         geom_point() +
-       stat_smooth(method=glm, family=poisson, se = F) #how do we tell it what model we're running?? #Family = binomial and family = poisson result in the same thing rn
+      geom_point() +
+      # stat_smooth(method=glm, family=poisson, se = F)  #how do we tell it what model we're running?? #Family = binomial and family = poisson result in the same thing rn. #se = F means we're not including the standard errors
+    geom_line(color='red',data = fortify(predictedBAY_df), aes(x=samlob_pred, y=hp)) #what does fortify do?
+
+
+
+```
+##Graphing our Model - Take 2
+
+```{r}
+
+  ggplot(salmon_lobster, aes(year, quantity)) +       
+  geom_point() +
+  stat_smooth(method=glm, family=poisson, se = F)  #how do we tell it what model we're running?? #Family = binomial and family = poisson result in the same thing rn. #se = F means we're not including the standard errors
+
 
 
 ```
