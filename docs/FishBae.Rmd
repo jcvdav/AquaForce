@@ -61,6 +61,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(stargazer)
 library(ggplot2)
+# install.packages("rstan", repos = "https://cloud.r-project.org/", dependencies=TRUE)
 
 ```
 
