@@ -11,24 +11,29 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 #Task List for Phoebe & Erin
-- **research GLMs**
+1. **Code GLM in STAN**
+  - follow: https://datascienceplus.com/bayesian-regression-with-stan-part-1-normal-regression/
+  - load data in STAN
+  - fit data to model
+  - Traceplot and posterior distribution
+  - Pairwise correlation
+  - Credible intervals around the parameters
+  - Plot regression line
+  - figure out how to incorporate .stan into RMarkdown
+2. **research GLMs**
   - error
   - alpha
   - beta
   - C
   - read 3.3 of stats book
   - figure out if we need to use random error graph
-- **Code GLM in STAN**
-  - figure out how to incorporate .stan into RMarkdown
-- **update GLM code to fit our data needs**
-  - why is regression line at 0?
+3. **combine Bay line w/ Juanca graph**
   - go through tidying of data in order to better mirror Juanca graph
-- **combine Bay line w/ Juanca graph**
-- **For Grace's analysis**
-  - create RMarkdown document ready to turn in
+4.  **For Grace's analysis**
+  - fill in outline
   - beautify graph
   - beautify regression table
-- **Presentation**
+5. **Presentation**
   - pull graphs from early AquaForce
 
 
@@ -78,6 +83,8 @@ library(stargazer)
 library(ggplot2)
 library(rstan)
 
+# rstan_options(auto_write = TRUE)
+# options(mc.cores = parallel::detectCores())
 
 ```
 
@@ -90,18 +97,49 @@ library(rstan)
 ##Salmon-Lobster Graph
 ```{r}
 
-fao_salmon_lobster  %>%
+simple_sam_lob <- fao_salmon_lobster  %>%
   group_by(year, source, general_name) %>% 
   summarize(quantity = sum(quantity)) %>% 
   filter(!(general_name == "Lobster" & source == "Aquaculture")) %>% 
-  rename(Species = general_name) %>% 
-  ggplot(aes(x = year, y = quantity/1000000, color = source, linetype = Species, group = paste(source, Species))) +
+  rename(Species = general_name)
+
+  ggplot(simple_sam_lob, aes(x = year, y = quantity/1000000, color = source, linetype = Species, group = paste(source, Species))) +
   geom_line(size = 1) +
   scale_color_brewer(palette = "Set1") +
   geom_vline(xintercept = 1962, linetype = "dashed") +
   geom_text(aes(x = 1975, y = 2.5, label = "Salmon aquaculture begins"), color = "black", size = 4) +
   labs(x = "Year", y = "Quantities (million MT)", caption = "(Data from FAO: www.fao.org/fishery/statistics/)") +
   theme_minimal()
+
+```
+
+#STAN Log Normal GLM
+- .stan file has been created for model
+  - using a file allows you to use print statements and to dereference line numbers in error messages
+**Loading Data for STAN Model**
+```{r}
+#From intro to STAN example
+fit <- stan(file = 'FishBaeSTAN.stan', data = simple_sam_lob, 
+            iter = 1000, chains = 4)
+
+
+##From Log Normal Example
+#load libraries
+library(rstan)
+library(coda)
+set.seed(20151204)
+#the explanatory variables
+dat<-data.frame(x1=runif(100,-2,2),x2=runif(100,-2,2))
+#the model
+X<-model.matrix(~x1*x2,dat)
+#the regression slopes
+betas<-runif(4,-1,1)
+#the standard deviation for the simulated data
+sigma<-1
+#the simulated data
+y_norm<-rnorm(100,X%*%betas,sigma)
+#a matrix to get the predicted y values
+new_X<-model.matrix(~x1*x2,expand.grid(x1=seq(min(dat$x1),max(dat$x1),length=20),x2=c(min(dat$x2),mean(dat$x2),max(dat$x2))))
 
 ```
 
@@ -375,5 +413,8 @@ pars %>%
 
 **DBDA2Estan**, a collection of models from *Doing Bayesian Data Analysis* which are closely linked to previous examples made for JAGS. In most cases, the syntax is what's different.
 https://github.com/jhoupt/DBDA2Estan
+
+Examples of code from multiple Bayesian statistics package geared towards population ecology: https://github.com/stan-dev/example-models/wiki
+
 
 
