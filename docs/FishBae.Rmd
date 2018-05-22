@@ -116,16 +116,22 @@ simple_sam_lob <- fao_salmon_lobster  %>%
 #STAN Log Normal GLM
 - .stan file has been created for model
   - using a file allows you to use print statements and to dereference line numbers in error messages
-**Loading Data for STAN Model**
-- to fit data to model - how does data need to be prepared?
-- it's not prepared right now -- maybe because catches and aquaculture aren't binomial yet
+  
+**Preparing Data for STAN**
+- this needs to all be numeric data
 ```{r}
-#From intro to STAN example
-fit <- stan(file = 'FishBaeSTAN.stan', data = salmon_lobster, 
-            iter = 1000, chains = 4)
 
+binary_salmon_lobster <- fao_salmon_lobster %>%
+  mutate(binary = ifelse(general_name == "Salmon", 1, 0)) %>% 
+  select(year, source, quantity, binary) %>% 
+  drop_na()
+# View(binary_salmon_lobster)  
 
-##From Log Normal Example
+```
+
+*Example of data creation  from Log Normal Example*
+```{r}
+##Log Normal Example
 #load libraries
 library(rstan)
 library(coda)
@@ -143,10 +149,70 @@ y_norm<-rnorm(100,X%*%betas,sigma)
 #a matrix to get the predicted y values
 new_X<-model.matrix(~x1*x2,expand.grid(x1=seq(min(dat$x1),max(dat$x1),length=20),x2=c(min(dat$x2),mean(dat$x2),max(dat$x2))))
 
+# View(new_X)
+
 ```
 
 
-#It's nice to know the difference between R and JAGS but Grace confirmed she wants us to do in JAGS, STAN or a specifc bayesian package -- we can explain why in our presentation
+**Fitting Data for STAN Model**
+- to fit data to model - how does data need to be prepared?
+- it's not prepared right now -- maybe because catches and aquaculture aren't binomial yet
+```{r}
+#From intro to STAN example
+fit <- stan(file = 'FishBaeSTAN.stan', data = binary_salmon_lobster, 
+            iter = 1000, chains = 4)
+
+
+```
+
+*Matrix for predicted values*
+```{r}
+# save predictions of the model in the new data frame 
+# together with variable you want to plot against
+predictedBAY_df <- data.frame(samlob_pred = predict(modeltestBAY, salmon_lobster), hp=salmon_lobster$quantity)
+#View(predictedBAY_df)
+
+
+```
+
+
+```{r}
+
+print(fit)
+plot(fit)
+pairs(fit, pars = c("mu", "tau", "lp__"))
+
+la <- extract(fit, permuted = TRUE) # return a list of arrays 
+mu <- la$mu 
+
+### return an array of three dimensions: iterations, chains, parameters 
+a <- extract(fit, permuted = FALSE) 
+
+### use S3 functions on stanfit objects
+a2 <- as.array(fit)
+m <- as.matrix(fit)
+d <- as.data.frame(fit)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#Old Stuff
 #Code for GLM in R
 
 #Poisson GLM in R and WinBUGS for modeling time series of counts
