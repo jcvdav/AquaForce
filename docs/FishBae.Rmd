@@ -117,9 +117,11 @@ simple_sam_lob <- fao_salmon_lobster  %>%
 - .stan file has been created for model
   - using a file allows you to use print statements and to dereference line numbers in error messages
 **Loading Data for STAN Model**
+- to fit data to model - how does data need to be prepared?
+- it's not prepared right now -- maybe because catches and aquaculture aren't binomial yet
 ```{r}
 #From intro to STAN example
-fit <- stan(file = 'FishBaeSTAN.stan', data = simple_sam_lob, 
+fit <- stan(file = 'FishBaeSTAN.stan', data = salmon_lobster, 
             iter = 1000, chains = 4)
 
 
