@@ -11,27 +11,16 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 #Task List for Phoebe & Erin
-- ~~copy/paste from Juanca~~
-  - ~~figure out what data sources we need in order to create Bayesian regression~~
-  - ~~I think we're at "fao_salmon_lobster.csv" & "all_salmon_lobster.csv"~~
-- ~~copy/paste GLM code from R~~
 - **research GLMs**
-  - We need to decide what kind of GLM we should use
+  - error
   - alpha
   - beta
   - C
-  - ~~priors~~
-    - there are some that are a lot of people use
-    - normal prior might be a good place to start
-  - distribution
   - read 3.3 of stats book
   - figure out if we need to use random error graph
 - **Code GLM in STAN**
-  - I think this will give us something to present to the class that's might be new to them and is in reach because Juan Carlos and Dan Ovando know how to use it. Grace is also willing to help.
-  - download RSta interface
+  - figure out how to incorporate .stan into RMarkdown
 - **update GLM code to fit our data needs**
-  - ~~select by salmon and lobster~~
-  - ~~make data frame for GLM~~
   - why is regression line at 0?
   - go through tidying of data in order to better mirror Juanca graph
 - **combine Bay line w/ Juanca graph**
@@ -43,25 +32,52 @@ knitr::opts_chunk$set(echo = TRUE)
   - pull graphs from early AquaForce
 
 
-#Considering Approach
+#Report Outline
+- **Introduction**
+  - question
+  - link to larger question
+  - approach
+  - data
+  - literature
+- **Approach**
+  - log normal GLM - insert equation
+    - normal prior
+    - other equation considerations
+  - STAN
+    - maybe explain basics of coding in STAN and connect cite resources
+- **Analysis**
+  - insert graphs
+  - captions
+- **Discussion**
+  - difference between frequentist regression lines and Bayesian
+- **Conclusion**
+  - next steps
 
+#Considering Approach
 ###What kind of GLM?
+**GLM defintion**: In statistics, the generalized linear model (GLM) is a flexible generalization of ordinary linear regression that allows for response variables that have error distribution models other than a normal distribution. 
+  - y = mx + b + e
+  - e is an error term and can come from any distribution family
+  - GLM is usually with a Poisson and a normal binominal for count data but you can also have it with beta or gamma distribution, multinomial or log normal
+
 **Poisson Generalized Linear Model**: a generalized linear model form of regression analysis used to model count data and contingency tables. Poisson regression assumes the response variable Y has a Poisson distribution, and assumes the logarithm of its expected value can be modeled by a linear combination of unknown parameters. A Poisson regression model is sometimes known as a log-linear model, especially when used to model contingency tables.
 - We're treating quantities of aquaculture production and fisheries catch as count data.
 
 **Poisson distribution**: a discrete probability distribution that expresses the probability of a given number of events occurring in a fixed interval of time or space if these events occur with a known constant rate and independently of the time since the last event (Frank A. Haight (1967). Handbook of the Poisson Distribution. New York: John Wiley & Sons).
 
 --**since production is a constant, we may want to switch to a different distribution**
-  - log OR normal could be a better fit
+  - log normal could be a better fit
 
 *Log-normal distribution*: a continuous probability distribution of a random variable whose logarithm is normally distributed. Thus, if the random variable X is log-normally distributed, then Y = ln(X) has a normal distribution. Likewise, if Y has a normal distribution, then the exponential function of Y, X = exp(Y), has a log-normal distribution. A random variable which is log-normally distributed takes only positive real values.
+- however, this can still be coded in STAN --> but is it Bayesian?
 
 #Loading Packages
 ```{r, include=FALSE}
 library(tidyverse)
 library(stargazer)
 library(ggplot2)
-# install.packages("rstan", repos = "https://cloud.r-project.org/", dependencies=TRUE)
+library(rstan)
+
 
 ```
 
@@ -92,7 +108,8 @@ fao_salmon_lobster  %>%
 
 #It's nice to know the difference between R and JAGS but Grace confirmed she wants us to do in JAGS, STAN or a specifc bayesian package -- we can explain why in our presentation
 #Code for GLM in R
-**Poisson GLM in R and WinBUGS for modeling time series of counts**
+
+#Poisson GLM in R and WinBUGS for modeling time series of counts
 The poisson GLM is described by a noise or random parameter following a Poisson distribution. In this sense, the random part of the response (or the statistical distribution) is given by:
 
 Ci∼Poisson(λi)
@@ -129,8 +146,6 @@ Black line represents the signal, blue dots represent the signal plus the random
 Count = "quantity"
 Years = 65 years, 1950 --> 2015
 Total data points: 13,293
-
-
 
 
 ###R Approach
@@ -226,7 +241,7 @@ ggplot(salmon_lobster, aes(year, quantity)) +
 
 ```
 
-##STAN Approach
+##Juanca's STAN Approach
 ```{r}
 
 data {
@@ -321,129 +336,44 @@ pars %>%
 
 
 
-
-
-
-###JAGS Approach
-First, we need to specify the model
-```{r}
-sink(here::here("WinBUGS", "GLM_Poisson.txt"))
-
-cat("
-  model{
-    # Priors
-    alpha ~ dunif(-20, 20)
-    beta1 ~ dunif(-10, 10)
-    beta2 ~ dunif(-10, 10)
-    beta3 ~ dunif(-10, 10)
-    
-    #Likelihood: Note key components of a GLM on one line each
-    
-    for(i in 1:n){
-      C[i] ~ dpois(lambda[i]) # This is the distribution for random part
-      log(lambda[i]) <- log.lambda[i] # This is the link function
-      log.lambda[i] <- alpha + beta1*year[i] + beta2*pow(year[i], 2) + beta3*pow(year[i], 3) # This is the linear predictor
-    }
-  }"
-  , fill = T)
-
-sink()
-
-
-```
-
-
-We now bundle the data. Since our predictor (year) is bounded between 0 and 40 and we have a cubic term, we would have a huge number on one side of the yea vector (i.e. 403=64000), and small numbers on the other. We must center and scale our data. The best way to do this is by taking the years, substracting the mean and then dividing by the standard deviation.
-```{r}
-
-y_trans <- (data$year - mean(data$year)) / sd(data$year)
-
-datab <- list(C = data$C, n = length(data$C), year = y_trans)
-
-```
-
-And define a function that returns random initial values
-```{r}
-inits <- function(){
-  list(alpha = runif(1, -2, 2),
-       beta1 = runif(1, -3, 3))
-}
-
-```
-
-We need to specify a list of the quantities we want to estimate or measure. These are the parameters that WinBUGS should return
-```{r}
-
-params <- c("alpha", "beta1", "beta2", "beta3", "lambda")
-
-```
-
-We must also specify a series of MCMC settings, including the number of draws per chain, thinning rate, burnin length, and number of chains.
-
-The settings are:
-
-```{r}
-
-ni <- 2000
-nt <- 2
-nb <- 1000
-nc <- 3
-
-```
-
-We can now pass all these to WinBUGS
-```{r}
-set.seed(43)
-out_jags <- jags(data = datab,
-                 inits = inits,
-                 parameters.to.save = params,
-                 model.file = "GLM_poisson.txt",
-                 n.chains = nc,
-                 n.thin = nt,
-                 n.iter = ni,
-                 n.burnin = nb,
-                 parallel = T)
-
-
-```
-
-```{r}
-out_jags
-
-```
-
-
 #Considering Using RAM Data
 
 ##Load RAM Legacy database
 ```{r}
-ram <- read.csv(here("raw_data","RAM", "RAM.csv"), stringsAsFactors = F) %>% 
-  janitor::clean_names()
+# ram <- read.csv(here("raw_data","RAM", "RAM.csv"), stringsAsFactors = F) %>% 
+#   janitor::clean_names()
 
 ```
 
 ```{r}
-lobster_salmon_ram <- ram %>% 
-  mutate(lobster = grepl(pattern = "lobster", x = stocklong),
-         salmon = grepl(pattern = "salmon", x = stocklong),
-         general_name = case_when(lobster ~ "Lobster",
-                                  TRUE ~ "Salmon")) %>% 
-  filter(lobster | salmon,
-         tsid == "BdivBmsytouse-dimensionless")
+# lobster_salmon_ram <- ram %>% 
+#   mutate(lobster = grepl(pattern = "lobster", x = stocklong),
+#          salmon = grepl(pattern = "salmon", x = stocklong),
+#          general_name = case_when(lobster ~ "Lobster",
+#                                   TRUE ~ "Salmon")) %>% 
+#   filter(lobster | salmon,
+#          tsid == "BdivBmsytouse-dimensionless")
 
 ```
 
 ###Graph of RAM Salmon and Lobster data
 ```{r}
 
-lobster_salmon_ram %>% 
-  group_by(tsyear, general_name) %>% 
-  summarize(tsvalue = median(tsvalue, na.rm = T)) %>% 
-  ggplot(aes(x = tsyear, y = tsvalue, color = general_name, group = general_name)) +
-  geom_line(size = 1) +
-  theme_bw()
+# lobster_salmon_ram %>% 
+#   group_by(tsyear, general_name) %>% 
+#   summarize(tsvalue = median(tsvalue, na.rm = T)) %>% 
+#   ggplot(aes(x = tsyear, y = tsvalue, color = general_name, group = general_name)) +
+#   geom_line(size = 1) +
+#   theme_bw()
 
 ```
 
+
+#Resources
+**We found a number of resources that are useful for learning how to use STAN.**
+**To install**: https://github.com/stan-dev/rstan/wiki/Installing-RStan-on-Mac-or-Linux
+
+**DBDA2Estan**, a collection of models from *Doing Bayesian Data Analysis* which are closely linked to previous examples made for JAGS. In most cases, the syntax is what's different.
+https://github.com/jhoupt/DBDA2Estan
 
 

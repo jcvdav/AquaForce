@@ -1,6 +1,6 @@
-#STAN Model for Salmon-Lobster
-### still needs to be updated with Salmon-Lobster Data
-#### see https://datascienceplus.com/bayesian-regression-with-stan-part-1-normal-regression/
+//STAN Model for Salmon-Lobster
+// still needs to be updated with Salmon-Lobster Data
+//see https://datascienceplus.com/bayesian-regression-with-stan-part-1-normal-regression/
 
 /*
 *Simple normal regression example
@@ -20,7 +20,7 @@ parameters {
 }
 transformed parameters {
   vector[N] linpred;
-  linpred <- X*beta;
+  linpred = X*beta;
 }
 model {  
   beta[1] ~ cauchy(0,10); //prior for the intercept following Gelman 2008
@@ -32,5 +32,5 @@ model {
 }
 generated quantities {
   vector[N2] y_pred;
-  y_pred <- new_X*beta; //the y values predicted by the model
+  y_pred = new_X*beta; //the y values predicted by the model
 }
