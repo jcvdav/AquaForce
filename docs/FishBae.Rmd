@@ -19,16 +19,10 @@ knitr::opts_chunk$set(echo = TRUE)
   - Pairwise correlation
   - Credible intervals around the parameters
   - Plot regression line
-  - figure out how to incorporate .stan into RMarkdown
-2. **research GLMs**
-  - error
-  - alpha
+2. **Understand GLMs**
   - beta
-  - C
   - read 3.3 of stats book
-  - figure out if we need to use random error graph
 3. **combine Bay line w/ Juanca graph**
-  - go through tidying of data in order to better mirror Juanca graph
 4.  **For Grace's analysis**
   - fill in outline
   - beautify graph
@@ -48,6 +42,7 @@ knitr::opts_chunk$set(echo = TRUE)
   - log normal GLM - insert equation
     - normal prior
     - other equation considerations
+    - for this model unlike Poisson, we don't need alpha or C
   - STAN
     - maybe explain basics of coding in STAN and connect cite resources
 - **Analysis**
@@ -57,24 +52,7 @@ knitr::opts_chunk$set(echo = TRUE)
   - difference between frequentist regression lines and Bayesian
 - **Conclusion**
   - next steps
-
-#Considering Approach
-###What kind of GLM?
-**GLM defintion**: In statistics, the generalized linear model (GLM) is a flexible generalization of ordinary linear regression that allows for response variables that have error distribution models other than a normal distribution. 
-  - y = mx + b + e
-  - e is an error term and can come from any distribution family
-  - GLM is usually with a Poisson and a normal binominal for count data but you can also have it with beta or gamma distribution, multinomial or log normal
-
-**Poisson Generalized Linear Model**: a generalized linear model form of regression analysis used to model count data and contingency tables. Poisson regression assumes the response variable Y has a Poisson distribution, and assumes the logarithm of its expected value can be modeled by a linear combination of unknown parameters. A Poisson regression model is sometimes known as a log-linear model, especially when used to model contingency tables.
-- We're treating quantities of aquaculture production and fisheries catch as count data.
-
-**Poisson distribution**: a discrete probability distribution that expresses the probability of a given number of events occurring in a fixed interval of time or space if these events occur with a known constant rate and independently of the time since the last event (Frank A. Haight (1967). Handbook of the Poisson Distribution. New York: John Wiley & Sons).
-
---**since production is a constant, we may want to switch to a different distribution**
-  - log normal could be a better fit
-
-*Log-normal distribution*: a continuous probability distribution of a random variable whose logarithm is normally distributed. Thus, if the random variable X is log-normally distributed, then Y = ln(X) has a normal distribution. Likewise, if Y has a normal distribution, then the exponential function of Y, X = exp(Y), has a log-normal distribution. A random variable which is log-normally distributed takes only positive real values.
-- however, this can still be coded in STAN --> but is it Bayesian?
+  
 
 #Loading Packages
 ```{r, include=FALSE}
@@ -119,6 +97,7 @@ simple_sam_lob <- fao_salmon_lobster  %>%
   
 **Preparing Data for STAN**
 - this needs to all be numeric data
+- need to create a matrix of predicted values
 ```{r}
 
 binary_salmon_lobster <- fao_salmon_lobster %>%
@@ -127,9 +106,17 @@ binary_salmon_lobster <- fao_salmon_lobster %>%
   drop_na()
 # View(binary_salmon_lobster)  
 
+#Matrix for predictive values
+
+# save predictions of the model in the new data frame 
+# together with variable you want to plot against
+# predicted_df <- data.frame(samlob_pred = predict(modeltestBAY, binary_salmon_lobster), hp=binary_salmon_lobster$quantity)
+#View(predictedBAY_df)
+
+
 ```
 
-*Example of data creation  from Log Normal Example*
+*Example of data creation from Log Normal Example*
 ```{r}
 ##Log Normal Example
 #load libraries
@@ -155,8 +142,7 @@ new_X<-model.matrix(~x1*x2,expand.grid(x1=seq(min(dat$x1),max(dat$x1),length=20)
 
 
 **Fitting Data for STAN Model**
-- to fit data to model - how does data need to be prepared?
-- it's not prepared right now -- maybe because catches and aquaculture aren't binomial yet
+- currently, there are errors due to data not properly formatted
 ```{r}
 #From intro to STAN example
 fit <- stan(file = 'FishBaeSTAN.stan', data = binary_salmon_lobster, 
@@ -165,17 +151,9 @@ fit <- stan(file = 'FishBaeSTAN.stan', data = binary_salmon_lobster,
 
 ```
 
-*Matrix for predicted values*
-```{r}
-# save predictions of the model in the new data frame 
-# together with variable you want to plot against
-predictedBAY_df <- data.frame(samlob_pred = predict(modeltestBAY, salmon_lobster), hp=salmon_lobster$quantity)
-#View(predictedBAY_df)
 
-
-```
-
-
+*Printing and Plotting STAN Model*
+- pairs has error due to data
 ```{r}
 
 print(fit)
@@ -197,287 +175,31 @@ d <- as.data.frame(fit)
 ```
 
 
+#Considering Approach
+###What kind of GLM?
+**GLM defintion**: In statistics, the generalized linear model (GLM) is a flexible generalization of ordinary linear regression that allows for response variables that have error distribution models other than a normal distribution. 
+  - y = mx + b + e
+  - e is an error term and can come from any distribution family
+  - GLM is usually with a Poisson and a normal binominal for count data but you can also have it with beta or gamma distribution, multinomial or log normal
 
+*Log-normal distribution*: a continuous probability distribution of a random variable whose logarithm is normally distributed. Thus, if the random variable X is log-normally distributed, then Y = ln(X) has a normal distribution. Likewise, if Y has a normal distribution, then the exponential function of Y, X = exp(Y), has a log-normal distribution. A random variable which is log-normally distributed takes only positive real values.
 
+*Considerations for Log Normal Distribution*
+Beta
+- In Bayesian inference, the **beta distribution** is the conjugate prior probability distribution for the Bernoulli, binomial, negative binomial and geometric distributions. For example, the beta distribution can be used in Bayesian analysis to describe initial knowledge concerning probability of success such as the probability that a space vehicle will successfully complete a specified mission. The beta distribution is a suitable model for the random behavior of percentages and proportions.
 
+**Poisson Generalized Linear Model**: a generalized linear model form of regression analysis used to model count data and contingency tables. Poisson regression assumes the response variable Y has a Poisson distribution, and assumes the logarithm of its expected value can be modeled by a linear combination of unknown parameters. A Poisson regression model is sometimes known as a log-linear model, especially when used to model contingency tables.
+- We're treating quantities of aquaculture production and fisheries catch as count data.
 
+**Poisson distribution**: a discrete probability distribution that expresses the probability of a given number of events occurring in a fixed interval of time or space if these events occur with a known constant rate and independently of the time since the last event (Frank A. Haight (1967). Handbook of the Poisson Distribution. New York: John Wiley & Sons).
 
-
-
-
-
-
-
-
-
-
-
-#Old Stuff
-#Code for GLM in R
-
-#Poisson GLM in R and WinBUGS for modeling time series of counts
-The poisson GLM is described by a noise or random parameter following a Poisson distribution. In this sense, the random part of the response (or the statistical distribution) is given by:
-
-Ci∼Poisson(λi)
-Here, λi is the expected count (mean response) related to the response. It is the link between the systematic and stochastic parts of the GLM:
-C = What is C?
-i = number of years
-
-log(λi)=ηiλi=eηi
-
-And ηi is simply the linear predictor (the systematic or signal part of the response):
-
-ηi=α+β∗Xi
-
-Intuitively, α and β are the parameters of interest, and Xi represents the value of the covariate (predictor variable) X at year i.
-
-###Visualizing the Random Error introduced through a Poisson Process
-- *need to determine if this is important or nice to have*
-```{r}
-
-###everything needs to be switched out to fit our work
-data_fn() %>% #need to change
-  ggplot(aes(x = year, y = C)) +
-  geom_line(aes(y = expected_count), size = 1) + 
-  geom_point(shape = 21, fill = "steelblue", size = 4) +
-  labs(x = "year", y = "Population size")
-
-
-```
-Black line represents the signal, blue dots represent the signal plus the random error introduced through a poisson process.
-
-
-
-#Our Model
-Count = "quantity"
-Years = 65 years, 1950 --> 2015
-Total data points: 13,293
-
-
-###R Approach
-In R, we apply a GLM using the glm function, to which we must specify the formula (the systematic part) and the name of the family that generates the error distribution.
-
-
-```{r}
-
-
-###everything needs to be switched out to fit our work
-set.seed(43) #The set.seed you use is the starting number you use in a sequence of numbers from random generation. How should we pick the set.seed?
-
-data <- data_fn()
-
-fm <- glm(C ~ year + I(year^2) + I(year^3), family = "poisson", data = data)
-
-stargazer::stargazer(fm,
-                     type = "html",
-                     header = F,
-                     single.row = T,
-                     intercept.bottom = F,
-                     intercept.top = T)
-
-data <- data_fn()
-
-fm <- glm(C ~ year + I(year^2) + I(year^3), family = "poisson", data = data)
-
-stargazer::stargazer(fm,
-                     type = "html",
-                     header = F,
-                     single.row = T,
-                     intercept.bottom = F,
-                     intercept.top = T)
-
-
-```
-
-####Our test
-```{r}
-
-salmon_lobster <- fao_salmon_lobster %>%
-  mutate(binary = ifelse(general_name == "Salmon", 1, 0))
-# View(salmon_lobster)  
-
-modeltestBAY <- glm(binary ~ quantity * year + I(year^2) + I(year^3), family = "poisson", data = salmon_lobster)
-summary(modeltestBAY)
-
-modeltestFREQ <- glm(binary ~ quantity * year, family = "binomial", data = salmon_lobster)
-summary(modeltestFREQ)
-
-stargazer::stargazer(modeltestBAY,
-                     type = "html",
-                     header = F,
-                     single.row = T,
-                     intercept.bottom = F,
-                     intercept.top = T)
-
-
-
-```
-##Saving predictions into dataframe
-- we can also try: https://blogs.uoregon.edu/rclub/2016/04/05/plotting-your-logistic-regression-models/
-```{r}
-
-# save predictions of the model in the new data frame 
-# together with variable you want to plot against
-predictedBAY_df <- data.frame(samlob_pred = predict(modeltestBAY, salmon_lobster), hp=salmon_lobster$quantity)
-#View(predictedBAY_df)
-
-```
-
-
-##Graphing our Model - Take 1
-```{r}
-
-
-ggplot(salmon_lobster, aes(year, quantity)) + 
-      geom_point() +
-    geom_line(color='red',data = fortify(predictedBAY_df), aes(x=samlob_pred, y=hp)) #what does fortify do?
-
-
-
-```
-##Graphing our Model - Take 2
-
-```{r}
-
-  ggplot(salmon_lobster, aes(year, quantity)) +       
-  geom_point() +
-  stat_smooth(method=glm, family=poisson, se = F)  #how do we tell it what model we're running?? #Family = binomial and family = poisson result in the same thing rn. #se = F means we're not including the standard errors
-
-
-
-```
-
-##Juanca's STAN Approach
-```{r}
-
-data {
-  int<lower=0> n;       // Number of years
-  int<lower=0> C[n];    // Count
-  vector[n] year;       // Year
-}
-
-transformed data {
-  vector[n] year_squared;
-  vector[n] year_cubed;
-
-  year_squared = year .* year;
-  year_cubed = year .* year .* year;
-}
-
-parameters {
-  real<lower=-20,upper=20> alpha;
-  real<lower=-10,upper=10> beta1;
-  real<lower=-10,upper=10> beta2;
-  real<lower=-10,upper=10> beta3;
-}
-
-transformed parameters {
-  vector[n] log_lambda;
-
-  log_lambda = alpha
-             + beta1 * year +
-             + beta2 * year_squared +
-             + beta3 * year_cubed;
-}
-
-model {
-  // Implicit uniform priors are used.
-
-  // Likelihood
-  C ~ poisson_log(log_lambda);
-}
-
-generated quantities {
-  vector[n] lambda;
-
-  lambda = exp(log_lambda);
-}
-
-```
-
-```{r}
-
-set.seed(43)
-out <- stan(here::here("WiNBUGS", "stan_source", "GLM_Poisson.stan"),
-            data = datab,
-            init = inits,
-            pars = params,
-            chains = nc,
-            thin = nt,
-            iter = ni,
-            warmup = nb,
-            seed = 43,
-            open_progress = FALSE)
-
-```
-
-We can inspect the values. If Rhat (R̂ ) values are all less than 1.1. This indicates convergence of the different MCMC chains was achieved. The R̂  values are obtained in an ANOVA-like way, where variance in parameter values is compared within and between chains.
-```{r}
-out
-```
-
-
-#####Plotting the estimates and their CRIs
-```{r}
-
-plot(out, pars = c("alpha", "beta1", "beta2", "beta3"), ci_level = 0.95, outer_level = 1)
-
-```
-
-Coefficient estimates and Credible intervals around them.
-
-####Posterior distributions of our parameters
-```{r}
-mcmc <- rstan::extract(out)
-
-pars <- mcmc[ c('alpha', 'beta1', 'beta2', 'beta3')] %>% 
-  map_df(as_data_frame, .id = 'variable')
-
-pars %>% 
-  ggplot(aes(x = value, fill = variable)) + 
-  geom_density(alpha = 0.5) + 
-  facet_grid(~variable, scales = "free")
-
-```
-
-
-
-#Considering Using RAM Data
-
-##Load RAM Legacy database
-```{r}
-# ram <- read.csv(here("raw_data","RAM", "RAM.csv"), stringsAsFactors = F) %>% 
-#   janitor::clean_names()
-
-```
-
-```{r}
-# lobster_salmon_ram <- ram %>% 
-#   mutate(lobster = grepl(pattern = "lobster", x = stocklong),
-#          salmon = grepl(pattern = "salmon", x = stocklong),
-#          general_name = case_when(lobster ~ "Lobster",
-#                                   TRUE ~ "Salmon")) %>% 
-#   filter(lobster | salmon,
-#          tsid == "BdivBmsytouse-dimensionless")
-
-```
-
-###Graph of RAM Salmon and Lobster data
-```{r}
-
-# lobster_salmon_ram %>% 
-#   group_by(tsyear, general_name) %>% 
-#   summarize(tsvalue = median(tsvalue, na.rm = T)) %>% 
-#   ggplot(aes(x = tsyear, y = tsvalue, color = general_name, group = general_name)) +
-#   geom_line(size = 1) +
-#   theme_bw()
-
-```
 
 
 #Resources
 **We found a number of resources that are useful for learning how to use STAN.**
 **To install**: https://github.com/stan-dev/rstan/wiki/Installing-RStan-on-Mac-or-Linux
+
+Our own Dan Ovando gives us an incredibly helpful run down of how to use STAN: https://github.com/DanOvando/learn-stan/blob/master/documents/learn-stan.Rmd
 
 **DBDA2Estan**, a collection of models from *Doing Bayesian Data Analysis* which are closely linked to previous examples made for JAGS. In most cases, the syntax is what's different.
 https://github.com/jhoupt/DBDA2Estan
