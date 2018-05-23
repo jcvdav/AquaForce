@@ -117,6 +117,7 @@ binary_salmon_lobster <- fao_salmon_lobster %>%
 ```
 
 *Example of data creation from Log Normal Example*
+https://datascienceplus.com/bayesian-regression-with-stan-part-1-normal-regression/
 ```{r}
 ##Log Normal Example
 #load libraries
@@ -136,7 +137,7 @@ y_norm<-rnorm(100,X%*%betas,sigma)
 #a matrix to get the predicted y values
 new_X<-model.matrix(~x1*x2,expand.grid(x1=seq(min(dat$x1),max(dat$x1),length=20),x2=c(min(dat$x2),mean(dat$x2),max(dat$x2))))
 
-# View(new_X)
+View(new_X)
 
 ```
 
