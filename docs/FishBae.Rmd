@@ -98,13 +98,16 @@ simple_sam_lob <- fao_salmon_lobster  %>%
 **Preparing Data for STAN**
 - this needs to all be numeric data
 - need to create a matrix of predicted values
+- salmon is 1, lobster is 0
+- should we create catch & aqculture under "source" column as binary also?
+- how do we write code that can fit into STAN that will acknowledge that?
 ```{r}
 
 binary_salmon_lobster <- fao_salmon_lobster %>%
   mutate(binary = ifelse(general_name == "Salmon", 1, 0)) %>% 
   select(year, source, quantity, binary) %>% 
   drop_na()
-# View(binary_salmon_lobster)  
+View(binary_salmon_lobster)  
 
 #Matrix for predictive values
 
