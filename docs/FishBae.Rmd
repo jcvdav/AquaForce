@@ -13,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 #Task List for Phoebe & Erin
 1. **Code GLM in STAN**
   - follow: https://datascienceplus.com/bayesian-regression-with-stan-part-1-normal-regression/
+  - rstanarm() STAN for GLMs
   - load data in STAN
   - fit data to model
   - Traceplot and posterior distribution
@@ -60,6 +61,7 @@ library(tidyverse)
 library(stargazer)
 library(ggplot2)
 library(rstan)
+library(rstanarm)
 
 # rstan_options(auto_write = TRUE)
 # options(mc.cores = parallel::detectCores())
@@ -101,13 +103,26 @@ simple_sam_lob <- fao_salmon_lobster  %>%
 - salmon is 1, lobster is 0
 - should we create catch & aqculture under "source" column as binary also?
 - how do we write code that can fit into STAN that will acknowledge that?
+
+split column by source into two columns
 ```{r}
+# To do:
+#need to define pre post variable (another dummy) ifelse(year > 1983)
+# every pre is a 0 and every pre aquaculture is a 0, so we might have a collinearity problem
 
 binary_salmon_lobster <- fao_salmon_lobster %>%
-  mutate(binary = ifelse(general_name == "Salmon", 1, 0)) %>% 
-  select(year, source, quantity, binary) %>% 
-  drop_na()
-View(binary_salmon_lobster)  
+  mutate(species = ifelse(general_name == "Salmon", 1, 0)) %>% 
+  select(year, source, quantity, species) %>% 
+  drop_na() %>%  
+  group_by(year, source, species) %>% #R puts similar things together
+  summarize(quantity = sum(quantity)) %>% #it will take groups and quantities and collaspse across, now we have 236 rows.
+  spread(source, quantity, fill=0) %>%   #now if we run a regression on it, we'll have pairwise deletions, so we need fill = 0 (fills NA with 0)
+  mutate(prepost = ifelse(year > 1983, 1, 0)) %>%  #before 1983 it's 0, after it's 1. need to find whatever paper that says the salmon tech revolution happend in 1983.
+  mutate(interaction = prepost*species) %>% 
+  mutate(intercept = 1) #for intercept column
+
+# mean(binary_salmon_lobster$Catches)
+# View(binary_salmon_lobster)  
 
 #Matrix for predictive values
 
@@ -121,28 +136,44 @@ View(binary_salmon_lobster)
 
 *Example of data creation from Log Normal Example*
 https://datascienceplus.com/bayesian-regression-with-stan-part-1-normal-regression/
-```{r}
-##Log Normal Example
-#load libraries
-library(rstan)
-library(coda)
-set.seed(20151204)
-#the explanatory variables
-dat<-data.frame(x1=runif(100,-2,2),x2=runif(100,-2,2))
-#the model
-X<-model.matrix(~x1*x2,dat)
-#the regression slopes
-betas<-runif(4,-1,1)
-#the standard deviation for the simulated data
-sigma<-1
-#the simulated data
-y_norm<-rnorm(100,X%*%betas,sigma)
-#a matrix to get the predicted y values
-new_X<-model.matrix(~x1*x2,expand.grid(x1=seq(min(dat$x1),max(dat$x1),length=20),x2=c(min(dat$x2),mean(dat$x2),max(dat$x2))))
 
-View(new_X)
+
+#Dan Advice
+- use rstanarm
+- Shiny app for STAN, shinySTAN
+- does all basic diagnostics for us
+- .stan file should give us about the same effect as rstanarm
+- for betas: have a parameter called beta_aqua
+
+depedent variable: wild capture catch (of any kind)
+indepedent variables: dummy variable (1 or 0 pre or post aquaculture,. 1 if salmon and 0 if lobster) and then interaction between 2 things (multiple them together)
+intercept: column of 1
+coefficients: 
+
+```{r}
+
+# rstanarm::stan_lm(catch ~ aqua + salmon, data = my_data)
+
+#consider standardizing catches & aquaculture
+mean.catch <- mean(binary_salmon_lobster$Catches)
+sd.catch <- sd(binary_salmon_lobster$Catches)
+std.catch <- (binary_salmon_lobster$Catches-mean.catch)/sd.catch
+
+fishBAE_glm <- stan_glm(std.catch ~1) 
+                      
+                      
+                      
+                      Aquaculture + species, 
+                  data = binary_salmon_lobster, 
+                  prior = R2(location = NULL, 
+                             what = c("mode", "mean", "log")))
+
+launch_shinystan(fishBAE_glm)
+
+
 
 ```
+
 
 
 **Fitting Data for STAN Model**
@@ -151,6 +182,8 @@ View(new_X)
 #From intro to STAN example
 fit <- stan(file = 'FishBaeSTAN.stan', data = binary_salmon_lobster, 
             iter = 1000, chains = 4)
+
+##Dan version
 
 
 ```
@@ -210,5 +243,6 @@ https://github.com/jhoupt/DBDA2Estan
 
 Examples of code from multiple Bayesian statistics package geared towards population ecology: https://github.com/stan-dev/example-models/wiki
 
+RStanarm tutorial: http://www.tqmp.org/RegularArticles/vol14-2/p099/p099.pdf
 
 
