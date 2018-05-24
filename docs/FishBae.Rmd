@@ -154,26 +154,32 @@ coefficients:
 
 # rstanarm::stan_lm(catch ~ aqua + salmon, data = my_data)
 
-#consider standardizing catches & aquaculture
+#standardizing catches & aquaculture
 mean.catch <- mean(binary_salmon_lobster$Catches)
 sd.catch <- sd(binary_salmon_lobster$Catches)
 std.catch <- (binary_salmon_lobster$Catches-mean.catch)/sd.catch
 #Aquaculture
-mean.Aquaculture <- mean(binary_salmon_lobster$Aquaculture)
-sd.Aquaculture <- sd(binary_salmon_lobster$Aquaculture)
-std.Aquaculture <- (binary_salmon_lobster$Catches-mean.Aquaculture)/sd.Aquaculture
+mean.aquaculture <- mean(binary_salmon_lobster$Aquaculture)
+sd.aquaculture <- sd(binary_salmon_lobster$Aquaculture)
+std.aquaculture <- (binary_salmon_lobster$Catches-mean.Aquaculture)/sd.Aquaculture
+
+Species <- (binary_salmon_lobster$species)
 
 #it works! it's null
 fishBAE_glm <- stan_glm(std.catch ~ 1)
 
 #Arg must be length of 1
-fishBAE_lm <- stan_glm(std.catch ~ std.Aquaculture + species, 
-                  data = binary_salmon_lobster, 
-                  prior = R2(location = NULL, 
-                             what = c("mode", "mean", "log"))) 
+fishBAE_lm <- stan_glm(std.catch ~ std.Aquaculture + Species)
+
+# , 
+#                   data = binary_salmon_lobster, 
+#                   prior = R2(location = NULL, 
+#                         what = c("mode", "mean", "log")),
+#                   match.arg(NULL))
             
 
 launch_shinystan(fishBAE_glm)
+launch_shinystan(fishBAE_lm)
 
 
 
