@@ -158,15 +158,20 @@ coefficients:
 mean.catch <- mean(binary_salmon_lobster$Catches)
 sd.catch <- sd(binary_salmon_lobster$Catches)
 std.catch <- (binary_salmon_lobster$Catches-mean.catch)/sd.catch
+#Aquaculture
+mean.Aquaculture <- mean(binary_salmon_lobster$Aquaculture)
+sd.Aquaculture <- sd(binary_salmon_lobster$Aquaculture)
+std.Aquaculture <- (binary_salmon_lobster$Catches-mean.Aquaculture)/sd.Aquaculture
 
-fishBAE_glm <- stan_glm(std.catch ~1) 
-                      
-                      
-                      
-                      Aquaculture + species, 
+#it works! it's null
+fishBAE_glm <- stan_glm(std.catch ~ 1)
+
+#Arg must be length of 1
+fishBAE_lm <- stan_glm(std.catch ~ std.Aquaculture + species, 
                   data = binary_salmon_lobster, 
                   prior = R2(location = NULL, 
-                             what = c("mode", "mean", "log")))
+                             what = c("mode", "mean", "log"))) 
+            
 
 launch_shinystan(fishBAE_glm)
 
