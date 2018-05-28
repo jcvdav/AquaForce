@@ -9,12 +9,12 @@ The model is given by:
 
 $$
 \begin{split}
-\frac{dB}{dt} &= r_bB(1 - \frac{B}{K_b}) - C \\
-\frac{dC}{dt} &= rC(1-\frac{C}{K} + \alpha A) \\
-\frac{dA}{dt} &= pA(1 - \frac{A}{M})
+\frac{dB}{dt} &= r_bB\left(1 - \frac{B}{K_b}\right) - \left(f B \left(1 - \frac{A + C}{D}\right)\right)\\
+\frac{dC}{dt} &= f B (1 - \frac{A + C}{D})\\
+\frac{dA}{dt} &= pA(1 - \frac{A + C}{D}) \\
+\frac{dD}{dt} &= 0
 \end{split}
 $$
-
 Where, B is for biomass, C is for catches, and A is for Aquaculture
 
 ## Load packages
@@ -37,17 +37,16 @@ system <- function(t, values, params){
   
   # Extract parameters
   rb <- params[1]
-  r <- params[2]
+  f <- params[2]
   a <- params[3]
   p <- params[4]
   Kb <- params[5]
-  K <- params[6]
-  M <- params[7]
+  D <- params[6]
   
   # Define system
-  dBdt <- B * rb * (1 - (B/Kb)) - C
-  dCdt <-  C * r * (1-(C/K)) + a * A
-  dAdt <- A * p * (1-(A/M))
+  dBdt <- (B * rb * (1 - (B/Kb))) - ((f*B) * (1 - ((A + C)/D)))
+  dCdt <- (f*B) * (1 - ((A+C)/D))
+  dAdt <- p *A * (1 - ((A+C)/D))
   # Return results
   return(list(c(dBdt, dCdt, dAdt)))
 }
@@ -58,21 +57,20 @@ system <- function(t, values, params){
 ```{r}
 t <- 0:10
 
-B0 <- 200
-C0 <- 1
+B0 <- 80
+C0 <- 10
 A0 <- 0
 initial_values <- c(B0, C0, A0)
 
 # Define parameters
-rb <- 1.2
-r <- 1
+rb <- 0.8
+f <- 0.01
 a <- 1
-p <- 0.5
+p <- 1.5
 Kb <- 80
-K <- 10
-M <- 20
+D <- 20
 
-params <- c(rb, r, a, p, Kb, K, M)
+params <- c(rb, f, a, p, Kb, D)
 ```
 
 ## Run first and second parts with $\alpha = 1$
@@ -82,7 +80,8 @@ init <- lsoda(y = initial_values, times = t, func = system, parms = params) %>%
   as.data.frame() %>% 
   magrittr::set_colnames(c("time", "B", "C", "A"))
 
-t2 <- 10:20
+t2 <- 10:30
+params <- c(rb, f, a, p, Kb, 40)
 initial_values2 <- c(init$B[length(init$B)], init$C[length(init$C)], 0.1)
 
 final <- lsoda(y = initial_values2, times = t2, func = system, parms = params) %>%
@@ -107,13 +106,14 @@ rbind(init, final) %>%
 ## Run first and second parts with $\alpha = -1$
 
 ```{r}
-params <- c(rb, r, -a, p, Kb, K, M)
+params <- c(rb, f, -a, p, Kb, D)
 
 init <- lsoda(y = initial_values, times = t, func = system, parms = params) %>%
   as.data.frame() %>% 
   magrittr::set_colnames(c("time", "B", "C", "A"))
 
 t2 <- 10:20
+params <- c(rb, f, -a, p, Kb, 40)
 initial_values2 <- c(init$B[length(init$B)], init$C[length(init$C)], 0.1)
 
 final <- lsoda(y = initial_values2, times = t2, func = system, parms = params) %>%
@@ -138,13 +138,14 @@ rbind(init, final) %>%
 ## Run first and second parts with $\alpha = 0$
 
 ```{r}
-params <- c(rb, r, 0, p, Kb, K, M)
+params <- c(rb, f, 0, p, Kb, D)
 
 init <- lsoda(y = initial_values, times = t, func = system, parms = params) %>%
   as.data.frame() %>% 
   magrittr::set_colnames(c("time", "B", "C", "A"))
 
 t2 <- 10:20
+params <- c(rb, f, 0, p, Kb, 40)
 initial_values2 <- c(init$B[length(init$B)], init$C[length(init$C)], 0.1)
 
 final <- lsoda(y = initial_values2, times = t2, func = system, parms = params) %>%
